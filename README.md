@@ -1,21 +1,97 @@
-# 💊 PharmaVault-MVP 
-**A Serverless Pharmacy Management & Inventory System**
+# React + TypeScript + Vite
 
-## 🚀 Overview
-PharmaVault is a vertical software solution designed to solve inventory leakage and prescription validation errors in West African pharmaceutical markets. Built on a serverless architecture for maximum scalability and low operational cost.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## 🛠️ Technical Architecture
-- **Environment:** Developed on **Pop!_OS (Linux)** 16GB RAM Workstation.
-- **Backend:** Firebase (Firestore NoSQL, Auth).
-- **Logic:** Python-driven data validation and inventory reconciliation.
+Currently, two official plugins are available:
 
-## 💡 Engineering Rationale
-I architected this project using a **NoSQL (Firestore)** schema to handle dynamic drug data hierarchies. 
-* **Concurrency:** Implemented atomic transactions to prevent race conditions during inventory updates.
-* **Efficiency:** Optimized data retrieval paths to ensure the system remains responsive on 4G networks (Huawei/Orange Money integration ready).
-* **AI Integration:** System designed for Future RLHF-based prescription OCR parsing.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## 🚧 Status
-- [x] System Architecture Design
-- [x] NoSQL Schema Implementation
-- [ ] AI Prescription Validation (In Development)
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```
+
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```
+
+## Environment variables
+
+This project requires a Supabase URL and anon public key to run locally. Copy `.env.example` to a local env file and fill in your project values:
+
+1. Copy the example:
+
+```bash
+cp .env.example .env.local
+```
+
+2. Edit `.env.local` and set:
+
+- `VITE_SUPABASE_URL` — your Supabase project URL (e.g. `https://xyz.supabase.co`)
+- `VITE_SUPABASE_ANON_KEY` — your Supabase anon/public key
+
+The app will fail to start if these variables are missing so mistakes are caught early.
+
+You can then run the dev server:
+
+```bash
+npm run dev
+```
+
