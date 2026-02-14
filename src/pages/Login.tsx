@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +19,8 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
+    // Automatically append @pharmavault.local to username
+    const email = `${username}@pharmavault.local`;
     const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -27,7 +29,7 @@ export const Login: React.FC = () => {
     if (signInError) {
       console.error('signInWithPassword failed:', signInError);
       const message = signInError.message === 'Invalid login credentials'
-        ? 'Identifiants incorrects. Vérifiez votre e-mail et mot de passe.'
+        ? 'Identifiants incorrects. Vérifiez votre nom d\'utilisateur et mot de passe.'
         : signInError.message;
       setError(message);
       alert(message);
@@ -74,20 +76,20 @@ export const Login: React.FC = () => {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label
-                htmlFor="email"
+                htmlFor="username"
                 className="block text-sm font-medium text-foreground"
               >
-                Adresse e-mail professionnelle
+                Nom d'utilisateur
               </label>
               <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="prenom.nom@pharmacie.fr"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="moussa"
               />
             </div>
 

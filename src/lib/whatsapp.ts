@@ -1,0 +1,56 @@
+/**
+ * Generate a formatted WhatsApp message for shift closing summary
+ */
+export function generateWhatsAppMessage({
+  date,
+  cashierName,
+  totalRecettes,
+  recettesEspeces,
+  recettesOrangeMoney,
+  recettesAssurance,
+  totalDepenses,
+  cashDifference,
+}: {
+  date: string;
+  cashierName: string;
+  totalRecettes: number;
+  recettesEspeces: number;
+  recettesOrangeMoney: number;
+  recettesAssurance: number;
+  totalDepenses: number;
+  cashDifference: number;
+}): string {
+  const formatAmount = (amount: number): string => 
+    `${amount.toFixed(2).replace('.', ',')} GNF`;
+
+  return (
+    `🚀 PharmaVault: Rapport de Clôture 🚀\n` +
+    `\n` +
+    `📅 Date: ${date}\n` +
+    `👤 Caissier: ${cashierName}\n` +
+    `\n` +
+    `💼 RECETTES TOTALES: ${formatAmount(totalRecettes)}\n` +
+    `  💵 Espèces: ${formatAmount(recettesEspeces)}\n` +
+    `  📱 Orange Money: ${formatAmount(recettesOrangeMoney)}\n` +
+    `  🏥 Assurance: ${formatAmount(recettesAssurance)}\n` +
+    `\n` +
+    `📉 Dépenses Approuvées: ${formatAmount(totalDepenses)}\n` +
+    `\n` +
+    `⚠️ ÉCART DE CAISSE: ${cashDifference >= 0 ? '+' : ''}${formatAmount(cashDifference)}\n` +
+    `${cashDifference === 0 ? '✅ Parfait!' : cashDifference < 0 ? '❌ Manquant' : '✓ Surplus'}\n` +
+    `\n` +
+    `🔐 PharmaVault - Gestion Officinale Sécurisée`
+  );
+}
+
+/**
+ * Open WhatsApp with pre-filled message
+ */
+export function shareViaWhatsApp(message: string, phoneNumber?: string): void {
+  const encodedMessage = encodeURIComponent(message);
+  const whatsappUrl = phoneNumber
+    ? `https://wa.me/${phoneNumber}?text=${encodedMessage}`
+    : `https://wa.me/?text=${encodedMessage}`;
+  
+  window.open(whatsappUrl, '_blank', 'width=600,height=400');
+}
