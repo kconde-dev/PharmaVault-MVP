@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 export interface PharmacyInfo {
     name: string;
@@ -112,13 +113,30 @@ export const loadSettingsFromDatabase = async (): Promise<AppSettings> => {
         .from('pharmacy_settings')
         .select('business_name, address, phone, email, whatsapp_enabled, whatsapp_recipient_number')
         .eq('id', 1)
-        .single();
+        .limit(1);
 
-    if (error || !data) {
+    if (error) {
         return getSettings();
     }
 
-    const settings = rowToSettings(data as PharmacySettingsRow);
+    const row = (data && data.length > 0) ? data[0] : null;
+
+    if (!row) {
+        // Seed the singleton row when missing (admin sessions will succeed).
+        await supabase
+            .from('pharmacy_settings')
+            .upsert(
+                {
+                    id: 1,
+                    ...settingsToRow(DEFAULT_SETTINGS),
+                    updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'id' },
+            );
+        return getSettings();
+    }
+
+    const settings = rowToSettings(row as PharmacySettingsRow);
     saveSettingsLocal(settings);
     return settings;
 };
@@ -138,7 +156,7 @@ export const saveSettings = async (settings: AppSettings): Promise<void> => {
         );
 
     if (error) {
-        throw error;
+        throw new Error(formatSupabaseError(error, 'Échec de sauvegarde des paramètres.'));
     }
     saveSettingsLocal(normalized);
 };

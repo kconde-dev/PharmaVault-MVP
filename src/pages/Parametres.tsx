@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { getSettings, saveSettings, loadSettingsFromDatabase, AppSettings } from '@/lib/settings';
 import { checkSupabaseConnection } from '@/lib/heartbeat';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 export function Parametres() {
   const { role } = useAuth();
@@ -96,7 +97,7 @@ export function Parametres() {
       setPinSuccess(true);
       setNewPin('');
     } catch (err) {
-      setPinError(err instanceof Error ? err.message : 'Défaut de mise à jour.');
+      setPinError(formatSupabaseError(err, 'Défaut de mise à jour.'));
     } finally {
       setIsUpdatingPin(false);
     }
@@ -146,7 +147,7 @@ export function Parametres() {
       {settingsError && (
         <div className="p-5 rounded-2xl bg-rose-50 border border-rose-100 flex items-center gap-4 text-rose-700">
           <AlertTriangle className="h-5 w-5" />
-          <p className="text-xs font-bold uppercase tracking-widest">{settingsError}</p>
+          <p className="text-xs font-bold uppercase tracking-widest">Erreur: {settingsError}</p>
         </div>
       )}
 
@@ -364,7 +365,7 @@ export function Parametres() {
             <div className="flex items-center gap-6">
               {isSuccess && (
                 <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-in slide-in-from-right-4">
-                  ✓ Registres sauvegardés
+                  ✓ Succès: registres sauvegardés
                 </p>
               )}
               <Button

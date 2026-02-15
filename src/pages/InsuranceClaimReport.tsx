@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, type AppSettings } from '@/lib/settings';
 import { downloadInsuranceClaimInvoicePDF } from '@/lib/pdf';
 import { useAuth } from '@/hooks/useAuth';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 type InsuranceProvider = {
   id: string;
@@ -53,7 +54,7 @@ export function InsuranceClaimReport() {
 
       if (!mounted) return;
       if (loadError) {
-        setError(loadError.message);
+        setError(formatSupabaseError(loadError, 'Erreur de chargement des prestataires.'));
         return;
       }
 
@@ -102,7 +103,7 @@ export function InsuranceClaimReport() {
       .order('created_at', { ascending: false });
 
     if (loadError) {
-      setError(loadError.message);
+      setError(formatSupabaseError(loadError, 'Erreur de chargement des créances.'));
       setIsLoading(false);
       return;
     }
@@ -168,7 +169,7 @@ export function InsuranceClaimReport() {
       .in('id', selectedIds);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(formatSupabaseError(updateError, 'Erreur lors du marquage en payé.'));
       return;
     }
 
@@ -178,7 +179,7 @@ export function InsuranceClaimReport() {
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <header>
-        <h1 className="text-2xl font-black text-slate-900">Rapport de Réclamation Assurance</h1>
+        <h1 className="text-2xl font-black text-slate-900">Bordereau de Demandes de Remboursement</h1>
         <p className="text-sm text-slate-500">Export mensuel et suivi de règlement des créances assurances</p>
       </header>
 
@@ -191,7 +192,7 @@ export function InsuranceClaimReport() {
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="grid gap-4 md:grid-cols-4">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Assurance</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Prestataire</label>
             <select
               value={providerId}
               onChange={(e) => setProviderId(e.target.value)}
@@ -281,19 +282,19 @@ export function InsuranceClaimReport() {
               <tr className="text-left text-xs font-bold uppercase tracking-widest text-slate-500">
                 <th className="px-4 py-3" />
                 <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Patient Card ID</th>
-                <th className="px-4 py-3">Total Amount</th>
-                <th className="px-4 py-3">Amount Due (Insurance Part)</th>
+                <th className="px-4 py-3">N° Carte Patient</th>
+                <th className="px-4 py-3">Montant</th>
+                <th className="px-4 py-3">Prise en charge (Assurance)</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-sm text-slate-500">Chargement...</td>
+                  <td colSpan={5} className="px-4 py-8 text-sm text-slate-500">Recherche en cours...</td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-sm text-slate-500">Aucune transaction approuvée.</td>
+                  <td colSpan={5} className="px-4 py-8 text-sm text-slate-500">Aucune donnée trouvée.</td>
                 </tr>
               ) : (
                 rows.map((row) => (

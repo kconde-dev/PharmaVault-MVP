@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 type TxType = 'income' | 'expense' | 'recette' | 'dépense';
 
@@ -81,7 +82,7 @@ export function StatsGrid() {
       if (!mounted) return;
 
       if (fetchError) {
-        setError(fetchError.message);
+        setError(formatSupabaseError(fetchError, 'Erreur de chargement des statistiques.'));
         setSeries([]);
         setIsLoading(false);
         return;
@@ -142,7 +143,7 @@ export function StatsGrid() {
     <section className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="h-4 w-1 bg-emerald-500 rounded-full" />
-        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Admin Stats</h2>
+        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Indicateurs Admin</h2>
       </div>
 
       {isLoading ? (
@@ -157,17 +158,17 @@ export function StatsGrid() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">Total Cash In (Today)</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">Chiffre d&apos;Affaires (Aujourd&apos;hui)</p>
               <p className="mt-3 text-3xl font-black text-emerald-700">{formatAmount(todayStats.totalIn)}</p>
             </div>
 
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-rose-700">Total Expenses (Today)</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-rose-700">Dépenses (Aujourd&apos;hui)</p>
               <p className="mt-3 text-3xl font-black text-rose-700">{formatAmount(todayStats.totalOut)}</p>
             </div>
 
             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-blue-700">Net Cash Position</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-blue-700">Bénéfice Net</p>
               <p className={`mt-3 text-3xl font-black ${todayStats.net >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
                 {todayStats.net >= 0 ? '+' : ''}
                 {formatAmount(todayStats.net)}
@@ -177,7 +178,7 @@ export function StatsGrid() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-500">
-              Cash Flow - Last 7 Days
+              Flux de Trésorerie - 7 Derniers Jours
             </p>
             <div className="overflow-x-auto">
               <LineChart width={900} height={280} data={series}>

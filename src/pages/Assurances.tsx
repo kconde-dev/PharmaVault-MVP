@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { Building2, Landmark, Receipt, PieChart, ArrowUpRight, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Transaction } from '@/lib/database.types';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 type InsuranceGroup = {
   name: string;
@@ -53,7 +54,7 @@ export function Assurances() {
         .select('id, name');
 
       if (insuranceError) {
-        setError(insuranceError.message);
+        setError(formatSupabaseError(insuranceError, 'Erreur de chargement des assurances.'));
         setIsLoading(false);
         return;
       }
@@ -68,7 +69,7 @@ export function Assurances() {
         .order('created_at', { ascending: false });
 
       if (txError) {
-        setError(txError.message);
+        setError(formatSupabaseError(txError, 'Erreur de chargement des transactions assurances.'));
         setIsLoading(false);
         return;
       }
@@ -163,7 +164,7 @@ export function Assurances() {
       .or('insurance_payment_status.is.null,insurance_payment_status.eq.unpaid');
 
     if (updateError) {
-      setError(updateError.message);
+      setError(formatSupabaseError(updateError, 'Erreur lors du marquage en payé.'));
       setIsMarkingPaidId(null);
       return;
     }
@@ -182,7 +183,7 @@ export function Assurances() {
       .eq('id', id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatSupabaseError(deleteError, 'Erreur lors de la suppression.'));
       return;
     }
     await refreshData();
@@ -210,7 +211,7 @@ export function Assurances() {
       .eq('id', tx.id);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(formatSupabaseError(updateError, 'Erreur lors de la mise à jour.'));
       return;
     }
     await refreshData();
@@ -448,7 +449,7 @@ export function Assurances() {
                             : 'bg-amber-50 text-amber-600 border-amber-100'
                           }`}>
                           {normalizeStatus(tx as InsuranceTransactionRow) === 'approved' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                          {normalizeStatus(tx as InsuranceTransactionRow) === 'approved' ? 'Approuvé' : normalizeStatus(tx as InsuranceTransactionRow) === 'rejected' ? 'Rejeté' : 'Attente'}
+                          {normalizeStatus(tx as InsuranceTransactionRow) === 'approved' ? 'Approuvé' : normalizeStatus(tx as InsuranceTransactionRow) === 'rejected' ? 'Rejeté' : 'En attente'}
                         </div>
                       </div>
                       {isAdmin && (
@@ -457,13 +458,13 @@ export function Assurances() {
                             onClick={() => handleEdit(tx)}
                             className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all"
                           >
-                            Edit
+                            Modifier
                           </button>
                           <button
                             onClick={() => handleDelete(tx.id)}
                             className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all"
                           >
-                            Delete
+                            Supprimer
                           </button>
                         </div>
                       )}

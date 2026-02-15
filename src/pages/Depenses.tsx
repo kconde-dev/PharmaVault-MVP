@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import type { Shift, Transaction, PaymentMethod } from '@/lib/database.types';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 function toModernPaymentMethod(method: PaymentMethod): 'cash' | 'mobile_money' | 'card' {
   if (method === 'espèces') return 'cash';
@@ -56,7 +57,9 @@ export function Depenses() {
     }
 
     const rows = (data || []) as Array<Transaction & { type: string; payment_method?: string; cashier_id?: string; is_approved?: boolean; shift_id?: string }>;
-    const hasLegacyShape = rows.some((row) => typeof row.shift_id === 'string' || typeof row.method === 'string');
+    const hasLegacyShape =
+      rows.length === 0
+        || rows.some((row) => typeof row.shift_id === 'string' || typeof row.method === 'string');
     setTransactionSchema(hasLegacyShape ? 'legacy' : 'modern');
     const normalized = rows
       .filter((t) => t.type === 'dépense' || t.type === 'expense')
@@ -80,7 +83,7 @@ export function Depenses() {
     setIsLoading(true);
     const { data, error: err } = await queryExpenses();
     if (err) {
-      setError(err.message);
+      setError(formatSupabaseError(err, 'Erreur de chargement des dépenses.'));
     } else {
       setTransactions((data || []) as Transaction[]);
     }
@@ -101,7 +104,7 @@ export function Depenses() {
         setIsLoading(true);
         const { data, error: err } = await queryExpenses();
         if (mounted) {
-          if (err) setError(err.message);
+          if (err) setError(formatSupabaseError(err, 'Erreur de chargement des dépenses.'));
           else setTransactions((data || []) as Transaction[]);
           setIsLoading(false);
         }
@@ -163,7 +166,7 @@ export function Depenses() {
     setIsLoading(false);
 
     if (insertError) {
-      setError(insertError.message || 'Erreur lors de l\'enregistrement de la dépense.');
+      setError(formatSupabaseError(insertError, 'Erreur lors de l\'enregistrement de la dépense.'));
       return;
     }
 
@@ -183,7 +186,7 @@ export function Depenses() {
       .eq('id', id);
 
     if (deleteError) {
-      setError(deleteError.message || 'Erreur lors de la suppression.');
+      setError(formatSupabaseError(deleteError, 'Erreur lors de la suppression.'));
       return;
     }
 
@@ -213,7 +216,7 @@ export function Depenses() {
       .eq('id', id);
 
     if (updateError) {
-      setError(updateError.message || 'Erreur lors de l\'approbation.');
+      setError(formatSupabaseError(updateError, 'Erreur lors de l\'approbation.'));
       return;
     }
 
@@ -234,7 +237,7 @@ export function Depenses() {
       .eq('id', id);
 
     if (updateError) {
-      setError(updateError.message || 'Erreur lors du rejet.');
+      setError(formatSupabaseError(updateError, 'Erreur lors du rejet.'));
       return;
     }
 

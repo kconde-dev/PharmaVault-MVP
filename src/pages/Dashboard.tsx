@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { generateWhatsAppMessage, shareViaWhatsApp } from '@/lib/whatsapp';
 import type { Shift, Transaction, PaymentMethod } from '@/lib/database.types';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 function toModernPaymentMethod(method: PaymentMethod): 'cash' | 'mobile_money' | 'card' {
   if (method === 'espèces') return 'cash';
@@ -200,7 +201,9 @@ export function Dashboard() {
     }
 
     const rows = (data || []) as Array<Record<string, unknown> & { shift_id?: string }>;
-    const hasLegacyShape = rows.some((row) => typeof row.shift_id === 'string' || typeof row.method === 'string');
+    const hasLegacyShape =
+      rows.length === 0
+        || rows.some((row) => typeof row.shift_id === 'string' || typeof row.method === 'string');
     setTransactionSchema(hasLegacyShape ? 'legacy' : 'modern');
     const hasShiftId = rows.some((row) => typeof row.shift_id === 'string');
     const filtered = hasShiftId
@@ -268,7 +271,7 @@ export function Dashboard() {
       started_at: new Date().toISOString(),
     });
     if (insertError) {
-      setError(insertError.message || 'Impossible de démarrer la garde.');
+      setError(formatSupabaseError(insertError, 'Impossible de démarrer la garde.'));
       setIsStarting(false);
       return;
     }
@@ -348,7 +351,7 @@ export function Dashboard() {
     const { error: insertError } = await supabase.from('transactions').insert(payload);
 
     if (insertError) {
-      setError(insertError.message || 'Erreur lors de l\'enregistrement.');
+      setError(formatSupabaseError(insertError, 'Erreur lors de l\'enregistrement.'));
       return;
     }
 
@@ -377,7 +380,7 @@ export function Dashboard() {
       .eq('id', id);
 
     if (updateError) {
-      setError(updateError.message || 'Erreur lors de la validation.');
+      setError(formatSupabaseError(updateError, 'Erreur lors de la validation.'));
       return;
     }
     await refreshTransactions();
@@ -395,7 +398,7 @@ export function Dashboard() {
       .eq('id', id);
 
     if (updateError) {
-      setError(updateError.message || 'Erreur lors du rejet.');
+      setError(formatSupabaseError(updateError, 'Erreur lors du rejet.'));
       return;
     }
     await refreshTransactions();
@@ -463,7 +466,7 @@ export function Dashboard() {
       .eq('id', currentShift.id);
 
     if (updateError) {
-      setError(updateError.message || 'Erreur lors de la clôture.');
+      setError(formatSupabaseError(updateError, 'Erreur lors de la clôture.'));
       return;
     }
 

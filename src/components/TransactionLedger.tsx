@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { formatSupabaseError } from '@/lib/supabaseError';
 
 type LedgerTransactionType = 'income' | 'expense';
 
@@ -68,7 +69,7 @@ export function TransactionLedger() {
       if (!isMounted) return;
 
       if (fetchError) {
-        setError(fetchError.message);
+        setError(formatSupabaseError(fetchError, 'Erreur de chargement des transactions.'));
         setTransactions([]);
       } else {
         setTransactions((data || []) as LedgerTransaction[]);
@@ -126,7 +127,7 @@ export function TransactionLedger() {
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wider text-slate-500">
                 <th className="pb-3 pr-4 font-bold" title="Time">Heure</th>
                 <th className="pb-3 pr-4 font-bold" title="Category">Catégorie</th>
-                <th className="pb-3 pr-4 font-bold" title="Type">Type</th>
+                <th className="pb-3 pr-4 font-bold" title="Nature">Nature</th>
                 <th className="pb-3 text-right font-bold" title="Amount">Montant</th>
               </tr>
             </thead>
