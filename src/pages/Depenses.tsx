@@ -1,38 +1,23 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useConnection } from '@/context/ConnectionContext';
-import { AlertCircle, Check, Clock, Plus, Trash2, CheckCircle } from 'lucide-react';
+import { AlertCircle, Clock, Plus, Trash2, CheckCircle, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import type { Shift, Transaction, PaymentMethod } from '@/lib/database.types';
 
-type Transaction = {
-  id: string;
-  shift_id: string;
-  amount: number;
-  description: string;
-  type: 'recette' | 'dépense';
-  method: 'espèces' | 'orange_money' | 'assurance';
-  status: string;
-  is_approved: boolean;
-  insurance_name: string | null;
-  created_at: string;
-  created_by: string;
-  approved_by: string | null;
-};
-
-type Shift = {
-  id: string;
-  user_id: string;
-  started_at: string;
-  ended_at: string | null;
-};
+function toModernPaymentMethod(method: PaymentMethod): 'cash' | 'mobile_money' | 'card' {
+  if (method === 'espèces') return 'cash';
+  if (method === 'orange_money') return 'mobile_money';
+  return 'card';
+}
 
 export function Depenses() {
   const { user, role } = useAuth();
   const { isOnline } = useConnection();
   const [currentShift, setCurrentShift] = useState<Shift | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionSchema, setTransactionSchema] = useState<'legacy' | 'modern'>('legacy');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -41,7 +26,7 @@ export function Depenses() {
   const [formData, setFormData] = useState({
     amount: '',
     description: '',
-    method: 'espèces' as const,
+    method: 'espèces' as PaymentMethod,
   });
 
   // Fetch active shift
@@ -58,17 +43,42 @@ export function Depenses() {
     return data ?? null;
   }, [user]);
 
-  // Fetch transactions
-  const fetchTransactions = useCallback(async () => {
-    if (!user) return;
-    setIsLoading(true);
-    const { data, error: err } = await supabase
+  // Helper to query expenses
+  const queryExpenses = async () => {
+    const { data, error } = await supabase
       .from('transactions')
       .select('*')
-      .eq('type', 'dépense')
       .order('created_at', { ascending: false })
       .limit(50);
 
+    if (error) {
+      return { data: null, error };
+    }
+
+    const rows = (data || []) as Array<Transaction & { type: string; payment_method?: string; cashier_id?: string; is_approved?: boolean; shift_id?: string }>;
+    const hasLegacyShape = rows.some((row) => typeof row.shift_id === 'string' || typeof row.method === 'string');
+    setTransactionSchema(hasLegacyShape ? 'legacy' : 'modern');
+    const normalized = rows
+      .filter((t) => t.type === 'dépense' || t.type === 'expense')
+      .map((t) => ({
+        ...t,
+        type: 'dépense',
+        method: t.method || (t.payment_method === 'cash' ? 'espèces' : t.payment_method === 'mobile_money' ? 'orange_money' : 'assurance'),
+        created_by: t.created_by || t.cashier_id || '',
+        status: t.status === 'validé' || t.status === 'approved' || t.is_approved === true
+          ? 'approved'
+          : t.status === 'rejeté' || t.status === 'rejected'
+            ? 'rejected'
+            : 'pending',
+      }));
+
+    return { data: normalized as Transaction[], error: null };
+  };
+
+  const refreshTransactions = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    const { data, error: err } = await queryExpenses();
     if (err) {
       setError(err.message);
     } else {
@@ -79,16 +89,33 @@ export function Depenses() {
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
+
+    const init = async () => {
+      // Load Active Shift
       const shift = await fetchActiveShift();
       if (!mounted) return;
       setCurrentShift(shift);
-    })();
-    fetchTransactions();
+
+      // Load Expenses
+      if (user) {
+        setIsLoading(true);
+        const { data, error: err } = await queryExpenses();
+        if (mounted) {
+          if (err) setError(err.message);
+          else setTransactions((data || []) as Transaction[]);
+          setIsLoading(false);
+        }
+      }
+    };
+
+    init();
+
     return () => {
       mounted = false;
     };
-  }, [fetchActiveShift, fetchTransactions]);
+  }, [fetchActiveShift, user]);
+
+  const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,16 +137,28 @@ export function Depenses() {
     }
 
     setIsLoading(true);
-    const { error: insertError } = await supabase.from('transactions').insert({
-      shift_id: currentShift.id,
-      amount: parseFloat(formData.amount),
-      description: formData.description,
-      type: 'dépense',
-      method: formData.method,
-      status: role === 'cashier' || role !== 'administrator' ? 'en_attente' : 'validé',
-      is_approved: role === 'administrator',
-      created_by: user.id,
-    });
+    const payload = transactionSchema === 'legacy'
+      ? {
+        shift_id: currentShift.id,
+        amount: parseFloat(formData.amount),
+        description: formData.description,
+        type: 'dépense',
+        method: formData.method,
+        status: 'en_attente',
+        is_approved: false,
+        created_by: user.id,
+      }
+      : {
+        amount: parseFloat(formData.amount),
+        type: 'expense',
+        category: 'Dépense',
+        description: formData.description,
+        cashier_id: user.id,
+        payment_method: toModernPaymentMethod(formData.method),
+        status: 'pending',
+      };
+
+    const { error: insertError } = await supabase.from('transactions').insert(payload);
 
     setIsLoading(false);
 
@@ -131,7 +170,7 @@ export function Depenses() {
     // Reset form and refresh list
     setFormData({ amount: '', description: '', method: 'espèces' });
     setShowForm(false);
-    await fetchTransactions();
+    await refreshTransactions();
   };
 
   const handleDelete = async (id: string) => {
@@ -148,21 +187,29 @@ export function Depenses() {
       return;
     }
 
-    await fetchTransactions();
+    await refreshTransactions();
   };
 
   const handleApprove = async (id: string) => {
     if (!confirm('Êtes-vous sûr de vouloir approuver cette dépense ?')) return;
 
     setError(null);
-    const { error: updateError } = await supabase
-      .from('transactions')
-      .update({
-        is_approved: true,
+    const updatePayload = transactionSchema === 'legacy'
+      ? {
         status: 'validé',
+        is_approved: true,
         approved_by: user?.id,
         approved_at: new Date().toISOString(),
-      })
+      }
+      : {
+        status: 'approved',
+        approved_by: user?.id,
+        approved_at: new Date().toISOString(),
+      };
+
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update(updatePayload)
       .eq('id', id);
 
     if (updateError) {
@@ -170,107 +217,169 @@ export function Depenses() {
       return;
     }
 
-    await fetchTransactions();
+    await refreshTransactions();
   };
 
   const handleReject = async (id: string) => {
     if (!confirm('Êtes-vous sûr de vouloir rejeter cette dépense ?')) return;
 
     setError(null);
-    const { error: deleteError } = await supabase
+    const updatePayload = transactionSchema === 'legacy'
+      ? { status: 'rejeté', is_approved: false }
+      : { status: 'rejected', rejected_by: user?.id, rejected_at: new Date().toISOString() };
+
+    const { error: updateError } = await supabase
       .from('transactions')
-      .delete()
+      .update(updatePayload)
       .eq('id', id);
 
-    if (deleteError) {
-      setError(deleteError.message || 'Erreur lors du rejet.');
+    if (updateError) {
+      setError(updateError.message || 'Erreur lors du rejet.');
       return;
     }
 
-    await fetchTransactions();
+    await refreshTransactions();
   };
 
   const totalExpenses = transactions.reduce((sum, t) => sum + t.amount, 0);
-  const pendingExpenses = transactions.filter(t => t.status === 'en_attente').length;
-  const approvedExpenses = transactions.filter(t => t.is_approved).length;
+  const pendingExpenses = transactions.filter(t => t.status === 'pending').length;
+  const approvedExpenses = transactions.filter(t => t.status === 'approved').length;
 
   return (
-    <div className="p-6 lg:p-8">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          Dépenses
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Enregistrement et suivi des dépenses de la pharmacie
-        </p>
+    <div className="p-6 lg:p-10 space-y-10">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-2 w-8 bg-rose-500 rounded-full" />
+            <span className="text-[10px] font-bold text-rose-600 uppercase tracking-[0.2em]">Flux de Sortie</span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900">
+            Gestion des Dépenses
+          </h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">
+            Rapport de charges et validation des sorties de caisse.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 px-4 items-center gap-2 bg-white rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600">
+            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
+            {isOnline ? 'Serveur Synchronisé' : 'Mode Local'}
+          </div>
+        </div>
       </header>
 
       {!currentShift && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
-          <p className="text-sm">
-            ⚠️ Vous devez démarrer une garde pour enregistrer une dépense. Allez au Tableau de bord.
+        <div className="p-5 rounded-2xl bg-rose-50 border border-rose-100 flex items-center gap-4 animate-in slide-in-from-top-4">
+          <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shadow-sm text-rose-600">
+            <AlertCircle className="h-6 w-6" />
+          </div>
+          <p className="text-sm font-bold text-rose-900">
+            ⚠️ Attention: Aucune garde active détectée. Veuillez ouvrir une caisse pour enregistrer des frais.
           </p>
         </div>
       )}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-4">
-        <StatCard
-          title="Dépenses totales"
-          value={`${totalExpenses.toFixed(2).replace('.', ',')} GNF`}
-        />
-        <StatCard
-          title="En attente"
-          value={pendingExpenses.toString()}
-          color="amber"
-        />
-        <StatCard
-          title="Approuvées"
-          value={approvedExpenses.toString()}
-          color="green"
-        />
-        <StatCard
-          title="Garde active"
-          value={currentShift ? 'Oui' : 'Non'}
-          color={currentShift ? 'green' : 'gray'}
-        />
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="stats-card">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Total Décaissé</p>
+          <p className="text-2xl font-black text-slate-900">
+            {totalExpenses.toFixed(2).replace('.', ',')}
+          </p>
+          <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-slate-400">
+            GNF <span className="text-rose-500 font-black">SORTIE BRUTE</span>
+          </div>
+        </div>
+
+        <div className="stats-card border-l-4 border-l-amber-500">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">En Attente</p>
+          <p className="text-2xl font-black text-amber-600">
+            {pendingExpenses}
+          </p>
+          <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
+            Demandes <Clock className="h-3 w-3" />
+          </div>
+        </div>
+
+        <div className="stats-card border-l-4 border-l-emerald-500">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Validées</p>
+          <p className="text-2xl font-black text-emerald-600">
+            {approvedExpenses}
+          </p>
+          <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
+            Confirmées <CheckCircle className="h-3 w-3" />
+          </div>
+        </div>
+
+        <div className="stats-card">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">État Guichet</p>
+          <div className="flex items-center gap-2">
+            {currentShift ? (
+              <span className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-600 uppercase border border-emerald-100">
+                Ouvert
+              </span>
+            ) : (
+              <span className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-1 text-[10px] font-bold text-slate-400 uppercase border border-slate-200">
+                Fermé
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
-      {role === 'administrator' && (
-        <section className="mb-8 rounded-lg border border-blue-200 bg-blue-50 p-6">
-          <h2 className="mb-4 text-lg font-semibold text-blue-900">📋 Dépenses en Attente d'Approbation</h2>
-          {transactions.filter(t => t.status === 'en_attente').length === 0 ? (
-            <p className="text-sm text-blue-800">Aucune dépense en attente d'approbation.</p>
+      {isAdmin && (
+        <section className="p-8 rounded-[2rem] bg-indigo-50/50 border border-indigo-100 shadow-sm animate-in fade-in duration-500">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-sm font-black text-indigo-900 uppercase tracking-[0.2em] flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-indigo-500" />
+              Demandes d'Approbation prioritaires
+            </h2>
+            <span className="text-[10px] font-bold text-indigo-400 bg-white px-3 py-1 rounded-full shadow-inner">
+              PANEL DE CONTRÔLE ADMIN
+            </span>
+          </div>
+
+          {transactions.filter(t => t.status === 'pending').length === 0 ? (
+            <div className="text-center py-6 bg-white/40 rounded-2xl border border-dashed border-indigo-200">
+              <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Aucune demande en attente de traitement</p>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               {transactions
-                .filter(t => t.status === 'en_attente')
+                .filter(t => t.status === 'pending')
                 .map((tx) => (
                   <div
                     key={tx.id}
-                    className="flex items-center justify-between rounded-lg bg-white p-4 border border-blue-100"
+                    className="group relative overflow-hidden flex flex-col justify-between rounded-2xl bg-white p-5 border border-indigo-100 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 transition-all duration-300"
                   >
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{tx.description}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(tx.created_at).toLocaleDateString('fr-FR')} • {tx.amount.toFixed(2).replace('.', ',')} GNF
-                      </p>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">{tx.method}</p>
+                        <p className="text-sm font-black text-slate-800 uppercase tracking-tight line-clamp-1">{tx.description}</p>
+                      </div>
+                      <span className="text-md font-black text-indigo-600 tabular-nums">
+                        {tx.amount.toLocaleString('fr-FR')} GNF
+                      </span>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => handleApprove(tx.id)}
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        ✓ Approuver
-                      </Button>
-                      <Button
-                        onClick={() => handleReject(tx.id)}
-                        size="sm"
-                        variant="outline"
-                        className="border-red-300 text-red-600 hover:bg-red-50"
-                      >
-                        ✕ Rejeter
-                      </Button>
+
+                    <div className="flex items-center justify-between border-t border-slate-50 pt-4">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">
+                        Emis par: {tx.created_by?.split('-')[0] || 'Inconnu'}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleReject(tx.id)}
+                          className="px-3 py-1.5 text-[10px] font-black text-rose-500 hover:text-white hover:bg-rose-500 rounded-lg transition-all"
+                        >
+                          REJETER
+                        </button>
+                        <button
+                          onClick={() => handleApprove(tx.id)}
+                          className="px-4 py-1.5 text-[10px] font-black text-white bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 rounded-lg transition-all"
+                        >
+                          CAPTURER & VALIDER
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -279,32 +388,42 @@ export function Depenses() {
         </section>
       )}
 
-      <div className="mb-6">
+      <div className="mb-12">
         {!showForm ? (
           <Button
             onClick={() => setShowForm(true)}
             disabled={!currentShift}
-            className="gap-2"
+            className="h-14 rounded-2xl pharmacy-gradient text-white font-bold px-8 shadow-xl shadow-emerald-500/20 group hover:scale-[1.02] active:scale-95 transition-all border-0"
           >
-            <Plus className="h-4 w-4" />
-            Nouvelle Dépense
+            <Plus className="h-5 w-5 mr-2 group-hover:rotate-90 transition-transform" />
+            Nouvelle Opération de Dépense
           </Button>
         ) : (
-          <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-card p-6">
-            <h2 className="mb-4 text-lg font-medium text-foreground">Enregistrer une dépense</h2>
+          <form onSubmit={handleSubmit} className="glass-card rounded-3xl p-8 border border-white/40 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-xl font-black text-slate-900">Enregistrer une Dépense</h2>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowForm(false)}
+                className="h-8 w-8 rounded-full p-0 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                ✕
+              </Button>
+            </div>
 
             {error && (
-              <div className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
+              <div className="mb-6 rounded-2xl bg-rose-50 border border-rose-100 p-4 text-xs font-bold text-rose-600 uppercase tracking-wide">
+                ⚠️ {error}
               </div>
             )}
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground">
-                  Montant (GNF) *
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Montant (GNF)
                 </label>
-                <Input
+                <input
                   type="number"
                   step="0.01"
                   min="0"
@@ -314,39 +433,39 @@ export function Depenses() {
                   onChange={(e) =>
                     setFormData({ ...formData, amount: e.target.value })
                   }
-                  className="mt-1"
+                  className="w-full h-12 bg-slate-100 border border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground">
-                  Description *
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Description / Libellé
                 </label>
-                <Input
+                <input
                   type="text"
                   required
-                  placeholder="Ex: Achat de médicaments"
+                  placeholder="Ex: Facture Electricité"
                   value={formData.description}
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  className="mt-1"
+                  className="w-full h-12 bg-slate-100 border border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground">
-                  Méthode de paiement *
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Mode de Règlement
                 </label>
                 <select
                   value={formData.method}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      method: e.target.value as 'espèces' | 'orange_money' | 'assurance',
+                      method: e.target.value as PaymentMethod,
                     })
                   }
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  className="w-full h-12 bg-slate-100 border border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none"
                 >
                   <option value="espèces">💵 Espèces</option>
                   <option value="orange_money">📱 Orange Money</option>
@@ -355,27 +474,25 @@ export function Depenses() {
               </div>
             </div>
 
-            {role !== 'administrator' && (
-              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                <p>
-                  Cette dépense sera en attente d'approbation par un administrateur.
-                </p>
+            {!isAdmin && (
+              <div className="mt-8 p-4 rounded-2xl bg-amber-50 border border-amber-100 text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+                ℹ️ Cette opération nécessite une validation administrative avant d'être décomptée du bilan.
               </div>
             )}
 
-            <div className="mt-6 flex gap-3">
-              <div className="flex-1">
-                <Button type="submit" disabled={isLoading || !isOnline} className="w-full">
-                  {isLoading ? 'Enregistrement...' : 'Enregistrer'}
-                </Button>
-                {!isOnline && (
-                  <p className="mt-2 text-xs text-amber-700">Connexion perdue. Enregistrement désactivé pour éviter la perte de données.</p>
-                )}
-              </div>
+            <div className="mt-8 flex gap-4">
+              <Button
+                type="submit"
+                disabled={isLoading || !isOnline}
+                className="flex-1 h-12 rounded-xl pharmacy-gradient text-white font-bold border-0 shadow-lg shadow-emerald-500/20"
+              >
+                {isLoading ? 'Traitement...' : 'Confirmer la Dépense'}
+              </Button>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setShowForm(false)}
+                className="h-12 rounded-xl px-8 border-slate-200 text-slate-600 font-bold"
               >
                 Annuler
               </Button>
@@ -385,78 +502,86 @@ export function Depenses() {
       </div>
 
       <div>
-        <h2 className="mb-4 text-lg font-medium text-foreground">Dépenses récentes</h2>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-4 w-1 bg-slate-400 rounded-full" />
+          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Historique des Charges</h2>
+        </div>
+
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Chargement...</p>
+          <div className="h-40 flex items-center justify-center bg-white rounded-3xl border border-slate-100">
+            <p className="text-sm font-bold text-slate-400 animate-pulse uppercase tracking-[0.2em]">Chargement des données...</p>
+          </div>
         ) : transactions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune dépense enregistrée.</p>
+          <div className="h-40 flex items-center justify-center bg-white rounded-3xl border border-slate-100">
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.2em]">Aucun enregistrement trouvé</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border bg-muted/30">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium">Date</th>
-                  <th className="px-4 py-2 text-left font-medium">Description</th>
-                  <th className="px-4 py-2 text-right font-medium">Montant</th>
-                  <th className="px-4 py-2 text-left font-medium">Méthode</th>
-                  <th className="px-4 py-2 text-left font-medium">Statut</th>
-                  <th className="px-4 py-2 text-right font-medium">Actions</th>
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date / Heure</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Désignation</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Montant (GNF)</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mode</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Validation</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-slate-100">
                 {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3">
-                      {new Date(tx.created_at).toLocaleDateString('fr-FR')}
+                  <tr key={tx.id} className="group hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="text-xs font-bold text-slate-700">
+                        {new Date(tx.created_at).toLocaleDateString('fr-FR')}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium tracking-tight">
+                        {new Date(tx.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </td>
-                    <td className="px-4 py-3">{tx.description}</td>
-                    <td className="px-4 py-3 text-right font-medium">
-                      {tx.amount.toFixed(2).replace('.', ',')} GNF
+                    <td className="px-6 py-4 text-xs font-bold text-slate-900 uppercase tracking-tight italic">
+                      {tx.description}
                     </td>
-                    <td className="px-4 py-3 text-xs">
-                      {tx.method === 'espèces' ? '💵 Espèces' : tx.method === 'orange_money' ? '📱 Orange Money' : '🏥 Assurance'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-                          tx.status === 'en_attente'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        {tx.status === 'en_attente' ? (
-                          <>
-                            <Clock className="h-3 w-3" />
-                            En attente
-                          </>
-                        ) : (
-                          <>
-                            <Check className="h-3 w-3" />
-                            Validé
-                          </>
-                        )}
+                    <td className="px-6 py-4 text-right">
+                      <span className="text-sm font-black text-slate-900 tabular-nums">
+                        {tx.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        {role === 'administrator' && tx.status === 'en_attente' && (
+                    <td className="px-6 py-4">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5">
+                        {tx.method === 'espèces' ? '💵 Espèces' : tx.method === 'orange_money' ? '📱 O. Money' : '🏥 Assurance'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${tx.status === 'pending'
+                          ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                          : tx.status === 'rejected'
+                            ? 'bg-rose-50 text-rose-600 border border-rose-100'
+                            : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                          }`}
+                      >
+                        {tx.status === 'pending' ? 'En attente' : tx.status === 'rejected' ? 'Rejeté' : '✓ Validé'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {isAdmin && tx.status === 'pending' && (
                           <button
                             onClick={() => handleApprove(tx.id)}
-                            className="flex items-center gap-1 rounded px-2 py-1 text-xs bg-green-100 text-green-800 hover:bg-green-200 transition"
+                            className="h-8 w-8 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
                             title="Approuver"
                           >
-                            <CheckCircle className="h-3 w-3" />
-                            Approuver
+                            <CheckCircle className="h-4 w-4" />
                           </button>
                         )}
-                        {(role !== 'administrator' || tx.status === 'en_attente') && (
+                        {(!isAdmin || tx.status === 'pending') && (
                           <button
-                            onClick={() => handleDelete(tx.id)}
-                            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition"
-                            title="Supprimer"
+                            onClick={() => (isAdmin ? handleReject(tx.id) : handleDelete(tx.id))}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white transition-all shadow-sm"
+                            title={isAdmin ? 'Rejeter' : 'Supprimer'}
                           >
-                            <Trash2 className="h-3 w-3" />
-                            Supprimer
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         )}
                       </div>
@@ -468,22 +593,6 @@ export function Depenses() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function StatCard({ title, value, color = 'default' }: { title: string; value: string; color?: string }) {
-  const colorClasses = {
-    default: 'border-border',
-    amber: 'border-amber-200 bg-amber-50',
-    green: 'border-green-200 bg-green-50',
-    gray: 'border-gray-200 bg-gray-50',
-  };
-
-  return (
-    <div className={`rounded-lg border ${colorClasses[color as keyof typeof colorClasses] || colorClasses.default} bg-card p-5 shadow-sm`}>
-      <p className="text-sm font-medium text-muted-foreground">{title}</p>
-      <p className="mt-2 text-2xl font-semibold text-foreground">{value}</p>
     </div>
   );
 }

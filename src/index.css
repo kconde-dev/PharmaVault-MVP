@@ -4,67 +4,67 @@
 
 @layer base {
   :root {
-    --background: 222 47% 11%; /* slate-900-ish */
-    --foreground: 210 40% 98%;
-
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 13%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 152 76% 40%; /* emerald medical green */
-    --primary-foreground: 158 76% 10%;
-
-    --secondary: 222 47% 20%;
-    --secondary-foreground: 210 40% 96%;
-
-    --muted: 222 47% 18%;
-    --muted-foreground: 215 20% 70%;
-
-    --accent: 160 84% 39%;
-    --accent-foreground: 160 84% 10%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 222 47% 20%;
-    --input: 222 47% 20%;
-    --ring: 152 76% 40%;
-
-    --radius: 0.75rem;
+    /* PharmaVault 2026 High-Tech Theme */
+    --background: 218 46% 97%;
+    --foreground: 222 47% 11%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    
+    --primary: 220 77% 33%; /* Deep blue */
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 158 83% 35%; /* Emerald */
+    --secondary-foreground: 0 0% 100%;
+    
+    --muted: 210 40% 94%;
+    --muted-foreground: 215 16% 47%;
+    
+    --accent: 158 83% 41%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 11 84% 62%; /* Coral for outflows */
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 161 94% 30%;
+    
+    --radius: 1rem;
   }
 
   .dark {
-    --background: 222 47% 8%;
+    /* Refined Clinical Dark Theme */
+    --background: 222 47% 6%;
     --foreground: 210 40% 98%;
-
-    --card: 222 47% 11%;
+    
+    --card: 222 47% 10%;
     --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 11%;
+    
+    --popover: 222 47% 10%;
     --popover-foreground: 210 40% 98%;
-
-    --primary: 152 76% 45%;
-    --primary-foreground: 158 76% 10%;
-
-    --secondary: 222 47% 20%;
-    --secondary-foreground: 210 40% 96%;
-
-    --muted: 222 47% 18%;
-    --muted-foreground: 215 20% 70%;
-
-    --accent: 160 84% 40%;
-    --accent-foreground: 160 84% 10%;
-
+    
+    --primary: 161 94% 40%;
+    --primary-foreground: 222 47% 6%;
+    
+    --secondary: 199 89% 55%;
+    --secondary-foreground: 222 47% 6%;
+    
+    --muted: 222 47% 15%;
+    --muted-foreground: 215 20% 65%;
+    
+    --accent: 161 94% 50%;
+    --accent-foreground: 222 47% 6%;
+    
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
-
-    --border: 222 47% 24%;
-    --input: 222 47% 24%;
-    --ring: 152 76% 45%;
-
-    --radius: 0.75rem;
+    
+    --border: 222 47% 15%;
+    --input: 222 47% 15%;
+    --ring: 161 94% 40%;
   }
 
   * {
@@ -75,8 +75,40 @@
     min-height: 100vh;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    font-family: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-image: 
+      radial-gradient(at 0% 0%, hsla(220, 77%, 33%, 0.06) 0, transparent 50%),
+      radial-gradient(at 100% 100%, hsla(158, 83%, 35%, 0.06) 0, transparent 50%);
+    background-attachment: fixed;
   }
 }
 
+@layer components {
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl dark:bg-slate-900/70 dark:border-slate-800/20;
+  }
+  
+  .pharmacy-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+  }
+
+  .amount-in {
+    color: hsl(158 83% 35%);
+    font-weight: 800;
+  }
+
+  .amount-out {
+    color: hsl(11 84% 62%);
+    font-weight: 800;
+  }
+  
+  .stats-card {
+    @apply rounded-2xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-1 hover:border-primary/30;
+  }
+
+  .clinical-input {
+    @apply rounded-xl border border-border bg-white px-4 py-2 transition-all focus:ring-2 focus:ring-primary/20 focus:border-primary dark:bg-slate-950;
+  }
+}

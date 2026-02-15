@@ -238,3 +238,112 @@ export function downloadShiftReceiptPDF({
     newWindow.print();
   };
 }
+
+export function generateInsuranceClaimInvoice({
+  pharmacyName,
+  pharmacyAddress,
+  insuranceName,
+  fromDate,
+  toDate,
+  rows,
+}: {
+  pharmacyName: string;
+  pharmacyAddress: string;
+  insuranceName: string;
+  fromDate: string;
+  toDate: string;
+  rows: Array<{
+    date: string;
+    insuranceCardId: string;
+    totalAmount: number;
+    amountDue: number;
+  }>;
+}): string {
+  const totalToPay = rows.reduce((sum, row) => sum + row.amountDue, 0);
+
+  const lines = rows
+    .map(
+      (row) => `
+      <tr>
+        <td>${row.date}</td>
+        <td>${row.insuranceCardId || '-'}</td>
+        <td>${row.totalAmount.toLocaleString('fr-FR')}</td>
+        <td>${row.amountDue.toLocaleString('fr-FR')}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Facture Assurance - ${insuranceName}</title>
+      <style>
+        body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
+        .header { border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 16px; }
+        .title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+        .meta { font-size: 12px; color: #374151; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; text-align: left; }
+        th { background: #f3f4f6; text-transform: uppercase; letter-spacing: 0.04em; }
+        .total { margin-top: 18px; text-align: right; font-size: 16px; font-weight: 700; }
+        .foot { margin-top: 24px; font-size: 11px; color: #6b7280; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="title">${pharmacyName}</div>
+        <div class="meta">${pharmacyAddress}</div>
+        <div class="meta">Facture Assurance: ${insuranceName}</div>
+        <div class="meta">Période: ${fromDate} au ${toDate}</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>N° Carte Patient</th>
+            <th>Montant Total</th>
+            <th>Montant Dû</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lines}
+        </tbody>
+      </table>
+
+      <div class="total">Total à Payer: ${totalToPay.toLocaleString('fr-FR')} GNF</div>
+      <div class="foot">Document généré le ${new Date().toLocaleString('fr-FR')}.</div>
+    </body>
+    </html>
+  `;
+}
+
+export function downloadInsuranceClaimInvoicePDF(args: {
+  pharmacyName: string;
+  pharmacyAddress: string;
+  insuranceName: string;
+  fromDate: string;
+  toDate: string;
+  rows: Array<{
+    date: string;
+    insuranceCardId: string;
+    totalAmount: number;
+    amountDue: number;
+  }>;
+}): void {
+  const html = generateInsuranceClaimInvoice(args);
+  const newWindow = window.open('', '_blank');
+  if (!newWindow) {
+    alert('Impossible d\'ouvrir le fichier. Vérifiez les paramètres de votre navigateur.');
+    return;
+  }
+  newWindow.document.write(html);
+  newWindow.document.close();
+  newWindow.onload = () => {
+    newWindow.print();
+  };
+}

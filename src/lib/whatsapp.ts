@@ -1,3 +1,17 @@
+export const DEFAULT_WHATSAPP_NUMBER = '224656911019';
+
+/**
+ * Build a WhatsApp deep link with pre-filled message.
+ */
+export function buildWhatsAppLink(
+  message: string,
+  phoneNumber: string = DEFAULT_WHATSAPP_NUMBER,
+): string {
+  const encodedMessage = encodeURIComponent(message);
+  const normalizedNumber = phoneNumber.replace(/\D/g, '');
+  return `https://wa.me/${normalizedNumber}?text=${encodedMessage}`;
+}
+
 /**
  * Generate a formatted WhatsApp message for shift closing summary
  */
@@ -47,10 +61,9 @@ export function generateWhatsAppMessage({
  * Open WhatsApp with pre-filled message
  */
 export function shareViaWhatsApp(message: string, phoneNumber?: string): void {
-  const encodedMessage = encodeURIComponent(message);
   const whatsappUrl = phoneNumber
-    ? `https://wa.me/${phoneNumber}?text=${encodedMessage}`
-    : `https://wa.me/?text=${encodedMessage}`;
-  
+    ? buildWhatsAppLink(message, phoneNumber)
+    : buildWhatsAppLink(message);
+
   window.open(whatsappUrl, '_blank', 'width=600,height=400');
 }

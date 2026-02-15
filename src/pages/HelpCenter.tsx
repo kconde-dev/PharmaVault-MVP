@@ -1,0 +1,165 @@
+import { useState } from 'react';
+import { BookOpen, ShieldCheck, ShieldAlert, FileText, BarChart3, ClipboardCheck, Wallet } from 'lucide-react';
+import { buildWhatsAppLink } from '@/lib/whatsapp';
+
+const tabs = [
+  { id: 'staff', label: 'Espace Staff', tooltip: 'Staff usage guide' },
+  { id: 'admin', label: 'Espace Admin', tooltip: 'Admin usage guide' },
+] as const;
+
+export function HelpCenter() {
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('staff');
+  const helpLink = buildWhatsAppLink(
+    "Bonjour, j'ai besoin d'assistance sur le Help Center PharmaVault. Merci de me contacter pour support.",
+  );
+
+  return (
+    <div className="p-6 lg:p-8 space-y-10">
+      <header>
+        <h1 className="text-3xl font-black text-slate-900" title="User Guide">Guide d'Utilisation</h1>
+        <p className="text-sm text-slate-500" title="Operational handbook for staff and admins">
+          Manuel opérationnel détaillé pour exécuter sans erreur et superviser sans angle mort.
+        </p>
+      </header>
+
+      <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 w-fit">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            title={tab.tooltip}
+            onClick={() => setActiveTab(tab.id)}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+              activeTab === tab.id
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'staff' && (
+        <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 space-y-6 shadow-2xl shadow-slate-400/20">
+          <div className="flex items-center gap-2 text-slate-900">
+            <BookOpen className="h-5 w-5 text-emerald-300" />
+            <h2 className="text-lg font-black text-white" title="Frontline staff workflow">Staff Hub</h2>
+          </div>
+          <p className="text-sm leading-7 text-slate-200">
+            Ce parcours est conçu pour sécuriser la caisse tout en gardant un rythme rapide au comptoir.
+            Suivez chaque étape dans l'ordre pour garantir la conformité financière.
+          </p>
+          <ol className="list-decimal pl-5 space-y-3 text-sm text-slate-200">
+            <li>
+              Ouvrez la journée depuis le tableau de bord et vérifiez que la session active est bien la vôtre.
+            </li>
+            <li>
+              Enregistrez chaque vente en choisissant le mode de paiement correct (espèces, mobile, assurance).
+            </li>
+            <li>
+              Pour les paiements assurance, traitez le split-payment correctement:
+              part patient en caisse, part assurance en créance.
+            </li>
+            <li>
+              Pour les dépenses, créez la demande et laissez-la en <strong>En Attente</strong> pour validation admin.
+            </li>
+            <li>
+              Règle sécurité 2026: le <strong>Insurance Card ID</strong> est obligatoire pour toute réclamation.
+            </li>
+            <li>
+              Avant la fermeture, relisez le Journal Quotidien pour corriger les erreurs de saisie détectées.
+            </li>
+          </ol>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-600 bg-slate-800/70 p-3 text-xs text-slate-200">
+              <Wallet className="mb-2 h-4 w-4 text-emerald-300" />
+              Bon réflexe: vérifiez 2 fois le montant avant validation finale.
+            </div>
+            <div className="rounded-xl border border-slate-600 bg-slate-800/70 p-3 text-xs text-slate-200">
+              <ClipboardCheck className="mb-2 h-4 w-4 text-cyan-300" />
+              Bon réflexe: ne laissez jamais une dépense hors workflow d'approbation.
+            </div>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'admin' && (
+        <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 space-y-6 shadow-2xl shadow-slate-400/20">
+          <div className="flex items-center gap-2 text-white">
+            <ShieldCheck className="h-5 w-5 text-cyan-300" />
+            <h2 className="text-lg font-black" title="Administrator control workflow">Admin Hub</h2>
+          </div>
+          <p className="text-sm leading-7 text-slate-200">
+            L'espace admin combine gouvernance financière, contrôle des risques et décision stratégique.
+          </p>
+          <ol className="list-decimal pl-5 space-y-3 text-sm text-slate-200">
+            <li>
+              Audit Workflow: consultez les logs SafeGuard pour analyser alertes intrusion, tentative de vol et écarts.
+            </li>
+            <li>
+              Pilotez l'approbation/rejet des dépenses en attente pour verrouiller les sorties non autorisées.
+            </li>
+            <li>
+              Exportez les <strong>Bordereaux d'Assurance</strong> (Claim Reports) pour remboursement.
+            </li>
+            <li>
+              Decision Making: exploitez les analytics dashboard pour identifier les médicaments top-selling.
+            </li>
+            <li>
+              Contrôlez les créances assurance restantes et suivez les règlements pour maîtriser votre trésorerie réelle.
+            </li>
+          </ol>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-600 bg-slate-800/70 p-3 text-xs font-semibold text-slate-200">
+              <ShieldAlert className="mb-2 h-4 w-4 text-rose-300" />
+              Journal Sécurité SafeGuard
+            </div>
+            <div className="rounded-xl border border-slate-600 bg-slate-800/70 p-3 text-xs font-semibold text-slate-200">
+              <FileText className="mb-2 h-4 w-4 text-emerald-300" />
+              Bordereaux Assurance PDF
+            </div>
+            <div className="rounded-xl border border-slate-600 bg-slate-800/70 p-3 text-xs font-semibold text-slate-200">
+              <BarChart3 className="mb-2 h-4 w-4 text-cyan-300" />
+              Décisions Pilotées par Data
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-black text-slate-900" title="Quick FAQ">FAQ Rapide</h3>
+        <div className="mt-4 space-y-4 text-sm text-slate-700">
+          <div>
+            <p className="font-bold text-slate-900">Pourquoi une dépense est bloquée en attente ?</p>
+            <p>
+              Le workflow antifraude impose une validation admin avant sortie de caisse.
+            </p>
+          </div>
+          <div>
+            <p className="font-bold text-slate-900">Pourquoi le Card ID assurance est-il obligatoire ?</p>
+            <p>
+              Sans Card ID, la réclamation peut être rejetée lors des contrôles de remboursement 2026.
+            </p>
+          </div>
+          <div>
+            <p className="font-bold text-slate-900">Quand exporter le bordereau assurance ?</p>
+            <p>
+              À chaque fin de période de facturation ou dès qu'un lot de créances est prêt à transmission.
+            </p>
+          </div>
+        </div>
+        <a
+          href={helpLink}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-6 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800"
+          title="Help Link"
+        >
+          Help Link
+        </a>
+      </section>
+    </div>
+  );
+}
+
+export default HelpCenter;

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { checkSupabaseConnection } from '@/lib/heartbeat';
 
 type ConnectionContextValue = {
   isOnline: boolean;
@@ -7,28 +7,20 @@ type ConnectionContextValue = {
 
 const ConnectionContext = createContext<ConnectionContextValue | undefined>(undefined);
 
-/**
- * Lightweight health check against the health_check table.
- * This is a simple read query that validates Supabase connectivity.
- */
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
+
 async function checkHealth(): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from('health_check')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.warn('[ConnectionContext] Health check failed:', error.message);
-      return false;
-    }
-
-    // If we received a response object (even if empty), the connection worked
-    return true;
+    // Uses the shared heartbeat adapter (currently non-blocking/no-db probe).
+    return await checkSupabaseConnection();
   } catch (err) {
-    console.warn('[ConnectionContext] Health check threw:', err);
-    return false;
+    if (isAbortError(err)) {
+      return typeof navigator !== 'undefined' ? navigator.onLine : false;
+    }
+    // Do not spam console on transient network/runtime failures.
+    return typeof navigator !== 'undefined' ? navigator.onLine : false;
   }
 }
 
@@ -47,7 +39,7 @@ export const ConnectionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // initial check
     checkOnce();
 
-    // poll every 30s
+    // Poll occasionally to resync the badge state.
     const interval = window.setInterval(checkOnce, 30000);
 
     const handleOnline = () => {

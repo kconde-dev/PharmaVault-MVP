@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, RotateCcw, Trash2, AlertCircle, Loader } from 'lucide-react';
+import { RotateCcw, Trash2, AlertCircle, Loader, UserPlus, Users, ShieldCheck, Mail, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,33 +15,31 @@ import {
 interface Staff {
   id: string;
   username: string;
-  role: 'administrator' | 'cashier';
+  role: 'administrator' | 'staff';
   created_at: string;
   email: string;
 }
 
 interface AddEmployeeForm {
   username: string;
-  password: string;
-  role: 'administrator' | 'cashier';
+  accessCode: string; // 6-digit PIN
 }
 
 export const Personnel: React.FC = () => {
-  const { user, role } = useAuth();
+  const { role } = useAuth();
   const { isOnline } = useConnection();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState<AddEmployeeForm>({
     username: '',
-    password: '',
-    role: 'cashier',
+    accessCode: '',
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Fetch staff list
   const loadStaff = async () => {
     try {
       setIsLoading(true);
@@ -49,8 +47,7 @@ export const Personnel: React.FC = () => {
       const staffData = await getAllStaff();
       setStaff(staffData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors du chargement du personnel');
-      console.error('Error loading staff:', err);
+      setError(err instanceof Error ? err.message : 'Dépassement de capacité ou erreur réseau');
     } finally {
       setIsLoading(false);
     }
@@ -58,344 +55,309 @@ export const Personnel: React.FC = () => {
 
   useEffect(() => {
     if (role !== 'administrator') {
-      setError('Accès réservé aux administrateurs');
+      setError('Droits d\'accès insuffisants pour ce module');
       return;
     }
     loadStaff();
   }, [role]);
 
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.username.trim() || !formData.password.trim()) {
-      setError('Veuillez remplir tous les champs');
+    if (!formData.username.trim() || !formData.accessCode.trim()) {
+      setError('Tous les champs cliniques sont requis');
       return;
     }
-
+    if (!/^\d{6}$/.test(formData.accessCode)) {
+      setError('Le code PIN doit comporter 6 chiffres');
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
-    
     try {
       await createUser({
         username: formData.username.toLowerCase().trim(),
-        password: formData.password,
-        role: formData.role,
+        accessCode: formData.accessCode,
+        role: 'staff',
       });
-
-      setSuccessMessage(`Employé "${formData.username}" créé avec succès`);
-      setFormData({ username: '', password: '', role: 'cashier' });
+      setSuccessMessage(`Compte "${formData.username}" activé avec succès`);
+      showToast('Nouveau membre créé');
+      setFormData({ username: '', accessCode: '' });
       setShowModal(false);
-
-      // Reload staff list
       await loadStaff();
-
-      // Clear success message after 3 seconds
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de la création';
-      setError(message);
-      console.error('Error creating user:', err);
+      setError(err instanceof Error ? err.message : 'Erreur fatale lors de l\'inscription');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleResetPassword = async (userId: string, username: string) => {
-    if (!window.confirm(`Êtes-vous sûr de vouloir réinitialiser le mot de passe pour "${username}" ?`)) {
-      return;
-    }
-
+    if (!window.confirm(`Confirmer la réinitialisation des accès pour "${username}" ?`)) return;
     try {
       setError(null);
-      await resetUserPassword(userId);
-      setSuccessMessage(`Email de réinitialisation envoyé à ${username}@pharmavault.local`);
+      const member = staff.find((s) => s.id === userId);
+      await resetUserPassword(userId, member?.email);
+      setSuccessMessage(`Protocole de réinitialisation lancé pour ${username}`);
+      showToast(`Réinitialisation lancée pour ${username}`);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de la réinitialisation';
-      setError(message);
-      console.error('Error resetting password:', err);
+      setError(err instanceof Error ? err.message : 'Echec du protocole');
     }
   };
 
   const handleDeleteUser = async (userId: string, username: string) => {
-    if (!window.confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur "${username}" ? Cette action est irréversible.`)) {
-      return;
-    }
-
+    if (!window.confirm(`RÉVOCATION DÉFINITIVE de "${username}" ? Cette action est irréversible.`)) return;
     try {
       setError(null);
       await deleteUser(userId);
-      setSuccessMessage(`Employé "${username}" supprimé`);
+      setSuccessMessage(`Session "${username}" révoquée définitivement`);
+      showToast(`${username} supprimé`);
       await loadStaff();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de la suppression';
-      setError(message);
-      console.error('Error deleting user:', err);
+      setError(err instanceof Error ? err.message : 'Erreur de révocation');
     }
   };
 
-  const handleChangeRole = async (userId: string, currentRole: string, username: string) => {
-    const newRole = currentRole === 'administrator' ? 'cashier' : 'administrator';
-    
-    if (!window.confirm(`Changer le rôle de "${username}" en "${newRole === 'administrator' ? 'Administrateur' : 'Caissier'}" ?`)) {
-      return;
-    }
-
+  const handleChangeRole = async (userId: string, currentRole: string, requestedRole: 'administrator' | 'staff', username: string) => {
+    if (currentRole === requestedRole) return;
+    const newRole = requestedRole;
+    if (!window.confirm(`Mettre à jour les privilèges de "${username}" vers "${newRole.toUpperCase()}" ?`)) return;
     try {
       setError(null);
-      await updateUserRole(userId, newRole as 'administrator' | 'cashier');
-      setSuccessMessage(`Rôle mis à jour pour ${username}`);
+      await updateUserRole(userId, newRole as 'administrator' | 'staff');
+      setSuccessMessage(`Privilèges mis à jour pour ${username}`);
+      showToast(`Rôle mis à jour: ${username}`);
       await loadStaff();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de la mise à jour';
-      setError(message);
-      console.error('Error updating role:', err);
+      setError(err instanceof Error ? err.message : 'Erreur de privilège');
     }
   };
 
-  if (role !== 'administrator') {
-    return (
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="text-center space-y-4">
-          <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
-          <h1 className="text-xl font-semibold text-foreground">Accès refusé</h1>
-          <p className="text-sm text-muted-foreground">
-            Cette page est réservée aux administrateurs.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-6 lg:p-10 space-y-10">
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-[80] rounded-xl bg-emerald-600 text-white px-4 py-3 shadow-xl text-xs font-black uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
+          {toastMessage}
+        </div>
+      )}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-2 w-8 bg-emerald-500 rounded-full" />
+            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-[0.2em]">Ressources Humaines</span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900">
             Gestion du Personnel
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Créez et gérez les comptes des collaborateurs
+          <p className="mt-1 text-sm font-medium text-slate-500">
+            Contrôle des accès collaborateurs et niveaux de privilèges.
           </p>
         </div>
+
         <Button
           onClick={() => setShowModal(true)}
           disabled={!isOnline}
-          className="inline-flex items-center gap-2"
+          className="h-14 rounded-2xl pharmacy-gradient text-white font-black uppercase tracking-widest px-8 shadow-xl shadow-emerald-500/20 group hover:scale-[1.02] active:scale-95 transition-all border-0"
         >
-          <Plus className="h-4 w-4" />
-          Ajouter un Employé
+          <UserPlus className="h-5 w-5 mr-3 group-hover:scale-110 transition-transform" />
+          Nouveau Membre
         </Button>
-      </div>
+      </header>
 
-      {/* Messages */}
-      {error && (
-        <div className="bg-destructive/15 border border-destructive/50 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-destructive">{error}</div>
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-          <div className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5 flex items-center justify-center">
-            ✓
-          </div>
-          <div className="text-sm text-green-800">{successMessage}</div>
-        </div>
-      )}
-
-      {!isOnline && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-800">Connexion perdue. Les fonctionnalités de gestion du personnel sont désactivées pour éviter la perte de données.</div>
-        </div>
-      )}
-
-      {/* Loading State */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        /* Staff Table */
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          {staff.length === 0 ? (
-            <div className="px-6 py-12 text-center">
-              <p className="text-sm text-muted-foreground">
-                Aucun employé enregistré. Créez un nouveau collaborateur pour commencer.
-              </p>
+      {(error || successMessage || !isOnline) && (
+        <div className="space-y-4 animate-in slide-in-from-top-4">
+          {error && (
+            <div className="p-5 rounded-2xl bg-rose-50 border border-rose-100 flex items-center gap-4 text-rose-600">
+              <AlertCircle className="h-5 w-5" />
+              <p className="text-xs font-bold uppercase tracking-widest">{error}</p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted/50 border-b border-border">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Nom d'utilisateur
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Rôle
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Date d'ajout
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {staff.map((member) => (
-                    <tr key={member.id} className="hover:bg-muted/30 transition">
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="font-medium text-foreground">{member.username}</p>
-                          <p className="text-xs text-muted-foreground">{member.email}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          onClick={() => handleChangeRole(member.id, member.role, member.username)}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium cursor-pointer hover:opacity-80 transition ${
-                            member.role === 'administrator'
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}
-                          title="Cliquez pour changer le rôle"
-                        >
-                          {member.role === 'administrator' ? '👨‍💼 Admin' : '👤 Caissier'}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">
-                        {new Date(member.created_at).toLocaleDateString('fr-FR')}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleResetPassword(member.id, member.username)}
-                            disabled={!isOnline}
-                            className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium bg-amber-100 text-amber-800 hover:bg-amber-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={isOnline ? "Réinitialiser le mot de passe" : "Connexion requise"}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Réinitialiser
-                          </button>
-                          <button
-                            onClick={() => handleDeleteUser(member.id, member.username)}
-                            disabled={!isOnline}
-                            className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={isOnline ? "Supprimer cet utilisateur" : "Connexion requise"}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          )}
+          {successMessage && (
+            <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center gap-4 text-emerald-600">
+              <ShieldCheck className="h-5 w-5" />
+              <p className="text-xs font-bold uppercase tracking-widest">{successMessage}</p>
+            </div>
+          )}
+          {!isOnline && (
+            <div className="p-5 rounded-2xl bg-amber-50 border border-amber-100 flex items-center gap-4 text-amber-600">
+              <AlertCircle className="h-5 w-5" />
+              <p className="text-xs font-bold uppercase tracking-widest underline decoration-wavy">Mode Hors-Ligne: Modifications Restreintes</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Add Employee Modal */}
+      {isLoading ? (
+        <div className="h-60 flex items-center justify-center bg-white rounded-[2.5rem] border border-slate-100">
+          <Loader className="h-8 w-8 animate-spin text-emerald-500" />
+        </div>
+      ) : (
+        <div className="glass-card rounded-[2.5rem] overflow-hidden border border-white/60 shadow-xl shadow-slate-200/50">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Collaborateur / ID</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Email</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Niveau d'Accès</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date d'Enrôlement</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Contrôle de Sécurité</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white/50">
+                {staff.map((member) => (
+                  <tr key={member.id} className="group hover:bg-slate-50/80 transition-colors">
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-colors">
+                          <Users className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-slate-900 tracking-tight uppercase italic">{member.username}</p>
+                          <p className="text-[10px] text-slate-400 font-bold tracking-tight">{member.id.slice(0, 8)}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
+                        <Mail className="h-3.5 w-3.5 text-slate-400" />
+                        {member.email}
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="relative inline-flex items-center gap-2">
+                        {member.role === 'administrator' ? <ShieldCheck className="h-3.5 w-3.5 text-indigo-500" /> : <Users className="h-3.5 w-3.5 text-emerald-500" />}
+                        <select
+                          value={member.role}
+                          onChange={(e) => handleChangeRole(member.id, member.role, e.target.value as 'administrator' | 'staff', member.username)}
+                          disabled={!isOnline}
+                          className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${member.role === 'administrator'
+                            ? 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                            : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                            }`}
+                        >
+                          <option value="staff">Collaborateur</option>
+                          <option value="administrator">Administrateur</option>
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                        <Calendar className="h-3.5 w-3.5 text-slate-300" />
+                        {new Date(member.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </div>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleResetPassword(member.id, member.username)}
+                          disabled={!isOnline}
+                          className="h-10 w-10 flex items-center justify-center rounded-xl bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white transition-all shadow-sm border border-amber-100"
+                          title="Réinitialiser l'Accès"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(member.id, member.username)}
+                          disabled={!isOnline}
+                          className="h-10 w-10 flex items-center justify-center rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white transition-all shadow-sm border border-rose-100"
+                          title="Révoquer l'Employé"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modern Add Employee Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Ajouter un Employé</h2>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
+          <div className="glass-card border border-white/40 rounded-[2.5rem] shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-300">
+            <header className="pharmacy-gradient p-8 text-white relative">
               <button
                 onClick={() => setShowModal(false)}
-                className="text-muted-foreground hover:text-foreground transition"
+                className="absolute top-6 right-6 h-8 w-8 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 text-white transition-colors"
               >
                 ✕
               </button>
-            </div>
+              <div className="h-14 w-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center mb-6">
+                <UserPlus className="h-7 w-7" />
+              </div>
+              <h2 className="text-2xl font-black tracking-tight uppercase">Nouveau Membre</h2>
+              <p className="text-white/70 text-xs font-bold uppercase tracking-widest mt-1">Sécurisation des accès officinaux</p>
+            </header>
 
-            <form onSubmit={handleAddEmployee} className="p-6 space-y-4">
+            <form onSubmit={handleAddEmployee} className="p-10 space-y-6 bg-white/80">
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-foreground">
-                  Nom d'utilisateur
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Identifiant Système (ID)
                 </label>
-                <Input
-                  type="text"
-                  placeholder="moussa"
-                  value={formData.username}
-                  onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
-                  }
-                  disabled={isSubmitting}
-                />
+                <div className="relative">
+                  <Input
+                    type="text"
+                    placeholder="moussa"
+                    value={formData.username}
+                    onChange={(e) =>
+                      setFormData({ ...formData, username: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() })
+                    }
+                    disabled={isSubmitting}
+                    className="h-12 bg-slate-100 border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900"
+                  />
+                  <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+                    <span className="text-[10px] font-black text-slate-400">@pharmavault.com</span>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-foreground">
-                  Mot de passe
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Code PIN de Sécurité (6 Chiffres)
                 </label>
                 <Input
                   type="password"
-                  placeholder="••••••••"
-                  value={formData.password}
+                  placeholder="••••••"
+                  maxLength={6}
+                  value={formData.accessCode}
                   onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
+                    setFormData({ ...formData, accessCode: e.target.value.replace(/\D/g, '') })
                   }
                   disabled={isSubmitting}
+                  className="h-12 bg-slate-100 border-slate-200 rounded-xl px-4 text-sm font-bold tracking-[0.8em]"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-foreground">
-                  Rôle
-                </label>
-                <select
-                  value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value as 'administrator' | 'cashier' })
-                  }
-                  disabled={isSubmitting}
-                  className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  <option value="cashier">Caissier</option>
-                  <option value="administrator">Administrateur</option>
-                </select>
-              </div>
-
-              <div className="pt-4 flex gap-3">
+              <div className="pt-6 flex flex-col gap-3">
                 <Button
                   type="submit"
                   isLoading={isSubmitting}
-                  disabled={isSubmitting || !formData.username.trim() || !formData.password.trim() || !isOnline}
-                  className="flex-1"
+                  disabled={isSubmitting || !formData.username.trim() || formData.accessCode.length !== 6 || !isOnline}
+                  className="h-14 rounded-2xl pharmacy-gradient text-white font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 border-0"
                 >
-                  Créer l'Employé
+                  Créer le Membre
                 </Button>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
                   disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 border border-input rounded-lg text-sm font-medium text-foreground hover:bg-muted transition disabled:opacity-50"
+                  className="h-12 rounded-xl text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
                 >
-                  Annuler
+                  Abandonner
                 </button>
               </div>
-
-              {error && (
-                <div className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded p-2">
-                  {error}
-                </div>
-              )}
-
-              {!isOnline && (
-                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                  Connexion perdue. Création d'employé désactivée pour éviter la perte de données.
-                </div>
-              )}
             </form>
           </div>
         </div>

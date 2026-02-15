@@ -1,87 +1,64 @@
 import { supabase } from './supabase';
 
+let deleteUserRpcVariant: 'legacy' | 'new' = 'legacy';
+let updateRoleRpcVariant: 'legacy' | 'new' = 'legacy';
+
 interface CreateUserParams {
   username: string;
-  password: string;
-  role: 'administrator' | 'cashier';
+  accessCode: string; // 6-digit PIN
+  role: 'administrator' | 'staff';
 }
 
 interface UserInfo {
   id: string;
   username: string;
-  role: 'administrator' | 'cashier';
+  role: 'administrator' | 'staff';
   created_at: string;
   email: string;
 }
 
 /**
- * Create a new user with username-based authentication
- * This requires the VITE_SUPABASE_SERVICE_ROLE_KEY to be set
- * Note: For frontend, this function attempts to use the Supabase REST API
+ * Create a new user with Name + Access Code (PIN) flow
+ * Internal mapping: email = name@pharmavault.com, password = PIN
  */
 export async function createUser(params: CreateUserParams): Promise<UserInfo | null> {
   try {
-    const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!serviceRoleKey) {
-      console.warn('VITE_SUPABASE_SERVICE_ROLE_KEY is not configured. User creation via UI is disabled.');
-      throw new Error(
-        'Service role key not configured. ' +
-        'Add VITE_SUPABASE_SERVICE_ROLE_KEY to your .env file for user management.'
-      );
+    // Validate 6-digit PIN
+    if (!/^\d{6}$/.test(params.accessCode)) {
+      throw new Error('Le code d\'accès doit être composé de exactement 6 chiffres.');
     }
 
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const email = `${params.username}@pharmavault.local`;
+    const email = `${params.username.toLowerCase().trim()}@pharmavault.com`;
 
-    // Use Supabase Admin API via REST endpoint
-    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-      },
-      body: JSON.stringify({
-        email,
-        password: params.password,
-        email_confirm: true,
-        user_metadata: {
+    // Use standard signup; a DB trigger is responsible for syncing public.user_roles.
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password: params.accessCode,
+      options: {
+        data: {
           username: params.username,
+          display_name: params.username, // Original display name
+          role: params.role,
         },
-      }),
+      },
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.msg || error.message || 'Failed to create user');
+    if (signUpError) {
+      if (signUpError.message.toLowerCase().includes('email')) {
+        throw new Error('Format d\'identifiant invalide. Utilisez uniquement des lettres et chiffres.');
+      }
+      throw signUpError;
     }
+    if (!signUpData.user) throw new Error('Échec de la création de l\'utilisateur');
 
-    const { user } = await response.json();
-
-    // Add user to user_roles table
-    const { error: roleError } = await supabase
-      .from('user_roles')
-      .insert([
-        {
-          user_id: user.id,
-          role: params.role,
-          username: params.username,
-          created_at: new Date().toISOString(),
-        },
-      ]);
-
-    if (roleError) {
-      console.warn('VITE_SUPABASE_SERVICE_ROLE_KEY is not configured. Cannot perform rollback deletion of created user.');
-      throw roleError;
-    }
+    const user = signUpData.user;
 
     return {
       id: user.id,
       username: params.username,
       role: params.role,
       created_at: user.created_at,
-      email: user.email,
+      email: user.email || email,
     };
   } catch (error) {
     console.error('Error creating user:', error);
@@ -94,56 +71,37 @@ export async function createUser(params: CreateUserParams): Promise<UserInfo | n
  */
 export async function getAllStaff(): Promise<UserInfo[]> {
   try {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabase.rpc('admin_list_staff');
     if (error) throw error;
 
-    // Fetch user details from auth to get email
-    const staffWithEmails: UserInfo[] = data.map((record: any) => ({
-      id: record.user_id,
-      username: record.username,
-      role: record.role,
-      created_at: record.created_at,
-      email: `${record.username}@pharmavault.local`,
-    }));
+    const rows = (data || []) as Array<{
+      user_id: string;
+      username: string;
+      role: 'administrator' | 'staff';
+      created_at: string | null;
+      email: string | null;
+    }>;
 
-    return staffWithEmails;
+    return rows.map((row) => ({
+      id: row.user_id,
+      username: row.username,
+      role: row.role,
+      created_at: row.created_at || new Date().toISOString(),
+      email: row.email || `${row.username}@pharmavault.com`,
+    }));
   } catch (error) {
     console.error('Error fetching staff:', error);
-    return [];
+    throw error;
   }
 }
 
 /**
- * Reset password for a user (admin only)
+ * Reset password for a user (sends email)
  */
-export async function resetUserPassword(userId: string): Promise<boolean> {
+export async function resetUserPassword(userId: string, userEmail?: string): Promise<boolean> {
   try {
-    const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!serviceRoleKey) {
-      console.warn('VITE_SUPABASE_SERVICE_ROLE_KEY is not configured. Password reset via UI is disabled.');
-      throw new Error(
-        'Service role key not configured. ' +
-        'Add VITE_SUPABASE_SERVICE_ROLE_KEY to your .env file for password reset.'
-      );
-    }
-
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const { data: userData } = await supabase
-      .from('user_roles')
-      .select('username')
-      .eq('user_id', userId)
-      .single();
-
-    if (!userData) {
-      throw new Error('User not found');
-    }
-
-    const email = `${userData.username}@pharmavault.local`;
+    const email = userEmail?.trim();
+    if (!email) throw new Error('Email utilisateur manquant');
 
     // Send password recovery email
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -160,67 +118,77 @@ export async function resetUserPassword(userId: string): Promise<boolean> {
 }
 
 /**
- * Delete a user and remove from user_roles (admin only)
+ * Remove user from the system.
+ * Note: Without a service role key, this only removes the user from the application's
+ * user_roles mapping. The Auth account remains in Supabase.
  */
 export async function deleteUser(userId: string): Promise<boolean> {
   try {
-    const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!serviceRoleKey) {
-      console.warn('VITE_SUPABASE_SERVICE_ROLE_KEY is not configured. User deletion via UI is disabled.');
-      throw new Error(
-        'Service role key not configured. ' +
-        'Add VITE_SUPABASE_SERVICE_ROLE_KEY to your .env file for user deletion.'
-      );
+    if (deleteUserRpcVariant === 'legacy') {
+      const attemptLegacy = await supabase.rpc('admin_delete_user_mapping', {
+        target_uid: userId,
+      });
+      if (!attemptLegacy.error) return Boolean(attemptLegacy.data);
+
+      const attemptNew = await supabase.rpc('admin_delete_user_mapping', {
+        target_user_id: userId,
+      });
+      if (attemptNew.error) throw attemptNew.error;
+      deleteUserRpcVariant = 'new';
+      return Boolean(attemptNew.data);
     }
 
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-
-    // Delete from user_roles first
-    const { error: roleError } = await supabase
-      .from('user_roles')
-      .delete()
-      .eq('user_id', userId);
-
-    if (roleError) throw roleError;
-
-    // Delete from auth
-    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-      },
+    const attemptNew = await supabase.rpc('admin_delete_user_mapping', {
+      target_user_id: userId,
     });
+    if (!attemptNew.error) return Boolean(attemptNew.data);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.msg || error.message || 'Failed to delete user');
-    }
-
-    return true;
+    const attemptLegacy = await supabase.rpc('admin_delete_user_mapping', {
+      target_uid: userId,
+    });
+    if (attemptLegacy.error) throw attemptLegacy.error;
+    deleteUserRpcVariant = 'legacy';
+    return Boolean(attemptLegacy.data);
   } catch (error) {
-    console.error('Error deleting user:', error);
+    console.error('Error deleting user mapping:', error);
     throw error;
   }
 }
 
-/**
- * Update user role (admin only)
- */
 export async function updateUserRole(
   userId: string,
-  newRole: 'administrator' | 'cashier'
+  newRole: 'administrator' | 'staff'
 ): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('user_roles')
-      .update({ role: newRole })
-      .eq('user_id', userId);
+    if (updateRoleRpcVariant === 'legacy') {
+      const attemptLegacy = await supabase.rpc('admin_update_user_role', {
+        target_uid: userId,
+        role_value: newRole,
+      });
+      if (!attemptLegacy.error) return Boolean(attemptLegacy.data);
 
-    if (error) throw error;
+      const attemptNew = await supabase.rpc('admin_update_user_role', {
+        target_user_id: userId,
+        new_role: newRole,
+      });
+      if (attemptNew.error) throw attemptNew.error;
+      updateRoleRpcVariant = 'new';
+      return Boolean(attemptNew.data);
+    }
 
-    return true;
+    const attemptNew = await supabase.rpc('admin_update_user_role', {
+      target_user_id: userId,
+      new_role: newRole,
+    });
+    if (!attemptNew.error) return Boolean(attemptNew.data);
+
+    const attemptLegacy = await supabase.rpc('admin_update_user_role', {
+      target_uid: userId,
+      role_value: newRole,
+    });
+    if (attemptLegacy.error) throw attemptLegacy.error;
+    updateRoleRpcVariant = 'legacy';
+    return Boolean(attemptLegacy.data);
   } catch (error) {
     console.error('Error updating user role:', error);
     throw error;

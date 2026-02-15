@@ -1,0 +1,10 @@
+-- Admin bootstrap intentionally excluded from SQL migrations.
+-- Do not hardcode credentials in migration history.
+--
+-- Use environment variables at deployment/runtime instead:
+-- - SUPABASE_ADMIN_USERNAME
+-- - SUPABASE_ADMIN_PASSWORD
+-- - VITE_SUPABASE_URL
+-- - VITE_SUPABASE_ANON_KEY
+--
+-- Example: run an environment-driven script from CI/CD or secure ops tooling.

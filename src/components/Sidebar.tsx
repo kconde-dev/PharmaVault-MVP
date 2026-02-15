@@ -1,81 +1,122 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import React from 'react';
 import {
   LayoutDashboard,
-  CalendarClock,
   Receipt,
   Building2,
-  Settings,
+  CircleHelp,
+  Info,
+  Grid2x2,
+  BookOpenCheck,
   ShieldCheck,
   Users,
+  LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { connectionConfig } from '@/lib/connectionConfig';
 import { useConnection } from '@/context/ConnectionContext';
+import { supabase } from '@/lib/supabase';
+import { Button } from './ui/button';
 
-const publicNavItems = [
-  { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-  { to: '/dashboard/gardes', label: 'Gestion des Gardes', icon: CalendarClock },
-  { to: '/dashboard/depenses', label: 'Dépenses', icon: Receipt },
-  { to: '/dashboard/assurances', label: 'Suivi des Assurances', icon: Building2 },
-  { to: '/dashboard/parametres', label: 'Paramètres', icon: Settings },
-] as const;
-
-const adminNavItems = [
-  { to: '/dashboard/personnel', label: 'Gestion du Personnel', icon: Users },
-] as const;
+type NavItem = {
+  to: string;
+  label: string;
+  tooltip: string;
+  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+};
 
 export function Sidebar() {
-  const { role } = useAuth();
+  const { user, role } = useAuth();
   const { isOnline } = useConnection();
+  const navigate = useNavigate();
 
-  const navItems = [
-    ...publicNavItems,
-    ...(role === 'administrator' ? adminNavItems : []),
+  const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
+
+  const staffNavItems: NavItem[] = [
+    { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Dashboard', icon: LayoutDashboard },
+    { to: '/dashboard/daily-ledger', label: 'Journal Quotidien', tooltip: 'Daily Ledger', icon: BookOpenCheck },
+    { to: '/dashboard/help', label: 'Aide', tooltip: 'Help Center', icon: CircleHelp },
   ];
 
-  return (
-    <aside className="flex h-full w-56 flex-col border-r border-border bg-card">
-      <div className="flex h-14 items-center justify-between gap-2 border-b border-border px-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <ShieldCheck className="h-5 w-5" aria-hidden />
-          </div>
-          <span className="font-semibold tracking-tight text-foreground">PharmaVault</span>
-        </div>
+  const adminNavItems: NavItem[] = [
+    { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Dashboard', icon: LayoutDashboard },
+    { to: '/dashboard/transactions', label: 'Transactions', tooltip: 'Transactions', icon: Receipt },
+    { to: '/dashboard/assurances', label: 'Assurances', tooltip: 'Insurance', icon: Building2 },
+    { to: '/dashboard/personnel', label: 'Personnel', tooltip: 'Staff Management', icon: Users },
+    { to: '/dashboard/about', label: 'À Propos', tooltip: 'About PharmaVault', icon: Info },
+    { to: '/dashboard/other-apps', label: 'Autres Apps', tooltip: 'Other Apps', icon: Grid2x2 },
+    { to: '/dashboard/help', label: 'Aide', tooltip: 'Help Center', icon: CircleHelp },
+  ];
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-2 text-xs font-medium rounded px-2 py-1 ${
-              isOnline ? connectionConfig.onlineBadgeClasses : connectionConfig.offlineBadgeClasses
-            }`}
-            title={isOnline ? connectionConfig.tooltipOnline : connectionConfig.tooltipOffline}
-          >
-            <span className={`h-2 w-2 rounded-full ${isOnline ? connectionConfig.onlineDotClasses : connectionConfig.offlineDotClasses}`} />
-            {isOnline ? connectionConfig.connectedText : connectionConfig.offlineText}
-          </span>
+  const navItems = isAdmin ? adminNavItems : staffNavItems;
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  return (
+    <aside className="flex h-full w-64 flex-col border-r border-border/50 bg-slate-950 text-slate-300">
+      <div className="flex h-20 items-center gap-3 px-6 border-b border-slate-800/50">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl pharmacy-gradient text-white shadow-lg shadow-emerald-500/20">
+          <ShieldCheck className="h-6 w-6" aria-hidden />
+        </div>
+        <div className="flex flex-col">
+          <span className="font-bold tracking-tight text-white leading-none">PharmaVault</span>
+          <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Management</span>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-0.5 p-3" aria-label="Navigation principale">
-        {navItems.map(({ to, label, icon: Icon }) => (
+      <nav className="flex-1 space-y-1 p-4 mt-4" aria-label="Navigation principale">
+        <p className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Menu Principal</p>
+        {navItems.map(({ to, label, tooltip, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/dashboard'}
+            title={tooltip}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 group ${isActive
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner'
+                : 'text-slate-400 hover:bg-slate-900 hover:text-white'
               }`
             }
           >
-            <Icon className="h-5 w-5 shrink-0" aria-hidden />
+            <Icon className={`h-5 w-5 shrink-0 transition-transform group-hover:scale-110 ${to === '/dashboard' ? 'text-emerald-500' : ''}`} aria-hidden />
             {label}
           </NavLink>
         ))}
       </nav>
+
+      <div className="mt-auto border-t border-slate-800/50 p-6 bg-slate-950/50">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="relative">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-xs uppercase shadow-inner">
+              {(user?.user_metadata?.display_name?.charAt(0) || user?.email?.charAt(0)) || 'U'}
+            </div>
+            <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-950 ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <span className="truncate text-xs font-semibold text-white">
+              {user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Utilisateur'}
+            </span>
+            <span className="truncate text-[10px] text-slate-500 font-medium capitalize">
+              {role || 'Session active'}
+            </span>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={handleLogout}
+          className="w-full justify-start gap-3 px-4 py-2 text-xs font-semibold text-slate-400 hover:bg-rose-500/10 hover:text-rose-400 rounded-xl border border-transparent hover:border-rose-500/20 transition-all"
+        >
+          <LogOut className="h-4 w-4" aria-hidden />
+          <span>Déconnexion</span>
+        </Button>
+      </div>
     </aside>
   );
 }
