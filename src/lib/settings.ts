@@ -122,6 +122,20 @@ export const loadSettingsFromDatabase = async (): Promise<AppSettings> => {
 export const saveSettings = async (settings: AppSettings): Promise<void> => {
     const normalized = normalizeSettings(settings);
 
+    const rpcAttempt = await supabase.rpc('admin_upsert_app_settings', {
+        p_pharmacy_name: normalized.pharmacy.name,
+        p_pharmacy_address: normalized.pharmacy.address,
+        p_pharmacy_phone: normalized.pharmacy.phone,
+        p_pharmacy_email: normalized.pharmacy.email,
+        p_whatsapp_enabled: normalized.whatsapp.enabled,
+        p_whatsapp_recipient_number: normalized.whatsapp.recipientNumber,
+    });
+
+    if (!rpcAttempt.error) {
+        saveSettingsLocal(normalized);
+        return;
+    }
+
     const { error } = await supabase
         .from('app_settings')
         .upsert(
@@ -133,6 +147,8 @@ export const saveSettings = async (settings: AppSettings): Promise<void> => {
             { onConflict: 'id' },
         );
 
-    if (error) throw error;
+    if (error) {
+        throw rpcAttempt.error || error;
+    }
     saveSettingsLocal(normalized);
 };
