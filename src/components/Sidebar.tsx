@@ -9,6 +9,7 @@ import {
   Grid2x2,
   BookOpenCheck,
   ShieldCheck,
+  Settings,
   Users,
   LogOut,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ export function Sidebar() {
     { to: '/dashboard/about', label: 'À Propos', tooltip: 'About PharmaVault', icon: Info },
     { to: '/dashboard/other-apps', label: 'Autres Apps', tooltip: 'Other Apps', icon: Grid2x2 },
     { to: '/dashboard/help', label: 'Aide', tooltip: 'Help Center', icon: CircleHelp },
+    { to: '/dashboard/parametres', label: 'Paramètres', tooltip: 'System Settings', icon: Settings },
   ];
 
   const navItems = isAdmin ? adminNavItems : staffNavItems;
