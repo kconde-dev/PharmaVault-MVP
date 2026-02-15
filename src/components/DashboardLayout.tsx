@@ -2,7 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, type AppSettings } from '@/lib/settings';
+import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, SETTINGS_UPDATED_EVENT, type AppSettings } from '@/lib/settings';
 import { MapPin, Building2 } from 'lucide-react';
 
 export function DashboardLayout() {
@@ -39,6 +39,17 @@ export function DashboardLayout() {
     loadSettings();
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const onSettingsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<AppSettings>).detail;
+      setSettings(detail || getSettings() || DEFAULT_SETTINGS);
+    };
+    window.addEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated as EventListener);
+    return () => {
+      window.removeEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated as EventListener);
     };
   }, []);
 

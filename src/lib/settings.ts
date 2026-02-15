@@ -19,7 +19,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
     pharmacy: {
-        name: 'PharmaVault Officine',
+        name: 'Pharmacie Djoma',
         address: 'Conakry, Guinée',
         phone: '+224 000 00 00 00',
         email: 'contact@pharmavault.gn',
@@ -31,12 +31,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const STORAGE_KEY = 'pharmavault_settings';
+export const SETTINGS_UPDATED_EVENT = 'pharmavault-settings-updated';
 
-type AppSettingsRow = {
-    pharmacy_name: string;
-    pharmacy_address: string;
-    pharmacy_phone: string;
-    pharmacy_email: string;
+type PharmacySettingsRow = {
+    business_name: string;
+    address: string;
+    phone: string;
+    email: string;
     whatsapp_enabled: boolean;
     whatsapp_recipient_number: string;
 };
@@ -63,13 +64,13 @@ function normalizeSettings(raw: unknown): AppSettings {
     };
 }
 
-function rowToSettings(row: AppSettingsRow): AppSettings {
+function rowToSettings(row: PharmacySettingsRow): AppSettings {
     return {
         pharmacy: {
-            name: row.pharmacy_name,
-            address: row.pharmacy_address,
-            phone: row.pharmacy_phone,
-            email: row.pharmacy_email,
+            name: row.business_name,
+            address: row.address,
+            phone: row.phone,
+            email: row.email,
         },
         whatsapp: {
             enabled: row.whatsapp_enabled,
@@ -78,12 +79,12 @@ function rowToSettings(row: AppSettingsRow): AppSettings {
     };
 }
 
-function settingsToRow(settings: AppSettings): AppSettingsRow {
+function settingsToRow(settings: AppSettings): PharmacySettingsRow {
     return {
-        pharmacy_name: settings.pharmacy.name,
-        pharmacy_address: settings.pharmacy.address,
-        pharmacy_phone: settings.pharmacy.phone,
-        pharmacy_email: settings.pharmacy.email,
+        business_name: settings.pharmacy.name,
+        address: settings.pharmacy.address,
+        phone: settings.pharmacy.phone,
+        email: settings.pharmacy.email,
         whatsapp_enabled: settings.whatsapp.enabled,
         whatsapp_recipient_number: settings.whatsapp.recipientNumber,
     };
@@ -101,12 +102,15 @@ export const getSettings = (): AppSettings => {
 
 export const saveSettingsLocal = (settings: AppSettings): void => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent<AppSettings>(SETTINGS_UPDATED_EVENT, { detail: settings }));
+    }
 };
 
 export const loadSettingsFromDatabase = async (): Promise<AppSettings> => {
     const { data, error } = await supabase
-        .from('app_settings')
-        .select('pharmacy_name, pharmacy_address, pharmacy_phone, pharmacy_email, whatsapp_enabled, whatsapp_recipient_number')
+        .from('pharmacy_settings')
+        .select('business_name, address, phone, email, whatsapp_enabled, whatsapp_recipient_number')
         .eq('id', 1)
         .single();
 
@@ -114,7 +118,7 @@ export const loadSettingsFromDatabase = async (): Promise<AppSettings> => {
         return getSettings();
     }
 
-    const settings = rowToSettings(data as AppSettingsRow);
+    const settings = rowToSettings(data as PharmacySettingsRow);
     saveSettingsLocal(settings);
     return settings;
 };
@@ -122,22 +126,8 @@ export const loadSettingsFromDatabase = async (): Promise<AppSettings> => {
 export const saveSettings = async (settings: AppSettings): Promise<void> => {
     const normalized = normalizeSettings(settings);
 
-    const rpcAttempt = await supabase.rpc('admin_upsert_app_settings', {
-        p_pharmacy_name: normalized.pharmacy.name,
-        p_pharmacy_address: normalized.pharmacy.address,
-        p_pharmacy_phone: normalized.pharmacy.phone,
-        p_pharmacy_email: normalized.pharmacy.email,
-        p_whatsapp_enabled: normalized.whatsapp.enabled,
-        p_whatsapp_recipient_number: normalized.whatsapp.recipientNumber,
-    });
-
-    if (!rpcAttempt.error) {
-        saveSettingsLocal(normalized);
-        return;
-    }
-
     const { error } = await supabase
-        .from('app_settings')
+        .from('pharmacy_settings')
         .upsert(
             {
                 id: 1,
@@ -148,7 +138,7 @@ export const saveSettings = async (settings: AppSettings): Promise<void> => {
         );
 
     if (error) {
-        throw rpcAttempt.error || error;
+        throw error;
     }
     saveSettingsLocal(normalized);
 };

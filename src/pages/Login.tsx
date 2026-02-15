@@ -1,15 +1,40 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Lock, User, AtSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
+import { getSettings, loadSettingsFromDatabase, SETTINGS_UPDATED_EVENT, type AppSettings } from '@/lib/settings';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
+  const [settings, setSettings] = useState<AppSettings>(getSettings());
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadBranding = async () => {
+      const dbSettings = await loadSettingsFromDatabase();
+      if (!mounted) return;
+      setSettings(dbSettings);
+    };
+    loadBranding().catch(() => {
+      if (!mounted) return;
+      setSettings(getSettings());
+    });
+
+    const onSettingsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<AppSettings>).detail;
+      setSettings(detail || getSettings());
+    };
+    window.addEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated as EventListener);
+    return () => {
+      mounted = false;
+      window.removeEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated as EventListener);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +85,7 @@ export const Login: React.FC = () => {
 
             <div className="space-y-2">
               <h1 className="text-3xl font-black tracking-tight text-slate-900 flex items-center justify-center gap-2">
-                PharmaVault
+                {settings.pharmacy.name || 'Pharmacie Djoma'}
                 <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-widest">v2.0</span>
               </h1>
               <p className="text-sm font-medium text-slate-500 px-6 leading-relaxed">

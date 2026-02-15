@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Receipt,
@@ -16,6 +16,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useConnection } from '@/context/ConnectionContext';
 import { supabase } from '@/lib/supabase';
+import { getSettings, loadSettingsFromDatabase, SETTINGS_UPDATED_EVENT, type AppSettings } from '@/lib/settings';
 import { Button } from './ui/button';
 
 type NavItem = {
@@ -29,6 +30,7 @@ export function Sidebar() {
   const { user, role } = useAuth();
   const { isOnline } = useConnection();
   const navigate = useNavigate();
+  const [settings, setSettings] = useState<AppSettings>(getSettings());
 
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
@@ -51,6 +53,29 @@ export function Sidebar() {
 
   const navItems = isAdmin ? adminNavItems : staffNavItems;
 
+  useEffect(() => {
+    let mounted = true;
+    const loadSettings = async () => {
+      const dbSettings = await loadSettingsFromDatabase();
+      if (!mounted) return;
+      setSettings(dbSettings);
+    };
+    loadSettings().catch(() => {
+      if (!mounted) return;
+      setSettings(getSettings());
+    });
+
+    const onSettingsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<AppSettings>).detail;
+      setSettings(detail || getSettings());
+    };
+    window.addEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated as EventListener);
+    return () => {
+      mounted = false;
+      window.removeEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated as EventListener);
+    };
+  }, []);
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
@@ -67,7 +92,7 @@ export function Sidebar() {
           <ShieldCheck className="h-6 w-6" aria-hidden />
         </div>
         <div className="flex flex-col">
-          <span className="font-bold tracking-tight text-white leading-none">PharmaVault</span>
+          <span className="font-bold tracking-tight text-white leading-none">{settings.pharmacy.name}</span>
           <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Management</span>
         </div>
       </div>
