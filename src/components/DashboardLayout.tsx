@@ -2,13 +2,13 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { getSettings } from '@/lib/settings';
+import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, type AppSettings } from '@/lib/settings';
 import { MapPin, Building2 } from 'lucide-react';
 
 export function DashboardLayout() {
   const { role } = useAuth();
   const [isSupabaseOnline, setIsSupabaseOnline] = useState<boolean>(true);
-  const settings = getSettings();
+  const [settings, setSettings] = useState<AppSettings>(getSettings());
 
   useEffect(() => {
     let poller: any = null;
@@ -21,6 +21,24 @@ export function DashboardLayout() {
 
     return () => {
       if (poller && typeof poller.stop === 'function') poller.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadSettings = async () => {
+      try {
+        const dbSettings = await loadSettingsFromDatabase();
+        if (!mounted) return;
+        setSettings(dbSettings);
+      } catch {
+        if (!mounted) return;
+        setSettings(getSettings() || DEFAULT_SETTINGS);
+      }
+    };
+    loadSettings();
+    return () => {
+      mounted = false;
     };
   }, []);
 

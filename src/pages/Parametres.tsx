@@ -17,7 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
-import { getSettings, saveSettings, AppSettings } from '@/lib/settings';
+import { getSettings, saveSettings, loadSettingsFromDatabase, AppSettings } from '@/lib/settings';
 import { checkSupabaseConnection } from '@/lib/heartbeat';
 
 export function Parametres() {
@@ -30,6 +30,7 @@ export function Parametres() {
   const [isUpdatingPin, setIsUpdatingPin] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
@@ -41,16 +42,41 @@ export function Parametres() {
     checkStatus();
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    const loadSettings = async () => {
+      try {
+        const dbSettings = await loadSettingsFromDatabase();
+        if (!mounted) return;
+        setSettings(dbSettings);
+      } catch (err) {
+        if (!mounted) return;
+        setSettingsError(err instanceof Error ? err.message : 'Impossible de charger les paramètres.');
+      }
+    };
+
+    loadSettings();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
 
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
-    saveSettings(settings);
-    setIsSaving(false);
-    setIsSuccess(true);
-    setTimeout(() => setIsSuccess(false), 3000);
+    setSettingsError(null);
+    try {
+      await saveSettings(settings);
+      setIsSuccess(true);
+      setTimeout(() => setIsSuccess(false), 3000);
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : 'Échec de sauvegarde des paramètres.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleUpdatePin = async (e: React.FormEvent) => {
@@ -114,6 +140,13 @@ export function Parametres() {
         <div className="p-5 rounded-2xl bg-amber-50 border border-amber-100 flex items-center gap-4 text-amber-600 animate-in slide-in-from-top-4">
           <AlertTriangle className="h-5 w-5" />
           <p className="text-xs font-bold uppercase tracking-widest">Mode Lecture Seule: Privilèges Administrateur Requis pour modification.</p>
+        </div>
+      )}
+
+      {settingsError && (
+        <div className="p-5 rounded-2xl bg-rose-50 border border-rose-100 flex items-center gap-4 text-rose-700">
+          <AlertTriangle className="h-5 w-5" />
+          <p className="text-xs font-bold uppercase tracking-widest">{settingsError}</p>
         </div>
       )}
 
@@ -351,4 +384,3 @@ export function Parametres() {
 }
 
 export default Parametres;
-

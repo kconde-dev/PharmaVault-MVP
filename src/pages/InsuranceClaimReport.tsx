@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, RefreshCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { getSettings } from '@/lib/settings';
+import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, type AppSettings } from '@/lib/settings';
 import { downloadInsuranceClaimInvoicePDF } from '@/lib/pdf';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -32,7 +32,7 @@ const endOfDayIso = (dateInput: string) => {
 
 export function InsuranceClaimReport() {
   const { user } = useAuth();
-  const settings = getSettings();
+  const [settings, setSettings] = useState<AppSettings>(getSettings());
   const [providers, setProviders] = useState<InsuranceProvider[]>([]);
   const [providerId, setProviderId] = useState('');
   const [fromDate, setFromDate] = useState(toDateInput(firstDayOfMonth()));
@@ -68,6 +68,24 @@ export function InsuranceClaimReport() {
       mounted = false;
     };
   }, [providerId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadSettings = async () => {
+      try {
+        const dbSettings = await loadSettingsFromDatabase();
+        if (!mounted) return;
+        setSettings(dbSettings);
+      } catch {
+        if (!mounted) return;
+        setSettings(getSettings() || DEFAULT_SETTINGS);
+      }
+    };
+    loadSettings();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const loadRows = async () => {
     if (!providerId) return;
