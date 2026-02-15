@@ -35,20 +35,20 @@ export function Sidebar() {
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
   const staffNavItems: NavItem[] = [
-    { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Dashboard', icon: LayoutDashboard },
-    { to: '/dashboard/daily-ledger', label: 'Journal Quotidien', tooltip: 'Daily Ledger', icon: BookOpenCheck },
-    { to: '/dashboard/help', label: 'Aide', tooltip: 'Help Center', icon: CircleHelp },
+    { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Tableau de bord', icon: LayoutDashboard },
+    { to: '/dashboard/daily-ledger', label: 'Journal Quotidien', tooltip: 'Journal quotidien', icon: BookOpenCheck },
+    { to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp },
   ];
 
   const adminNavItems: NavItem[] = [
-    { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Dashboard', icon: LayoutDashboard },
+    { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Tableau de bord', icon: LayoutDashboard },
     { to: '/dashboard/transactions', label: 'Transactions', tooltip: 'Transactions', icon: Receipt },
-    { to: '/dashboard/assurances', label: 'Assurances', tooltip: 'Insurance', icon: Building2 },
-    { to: '/dashboard/personnel', label: 'Personnel', tooltip: 'Staff Management', icon: Users },
-    { to: '/dashboard/about', label: 'À Propos', tooltip: 'About PharmaVault', icon: Info },
-    { to: '/dashboard/other-apps', label: 'Autres Apps', tooltip: 'Other Apps', icon: Grid2x2 },
-    { to: '/dashboard/help', label: 'Aide', tooltip: 'Help Center', icon: CircleHelp },
-    { to: '/dashboard/parametres', label: 'Paramètres', tooltip: 'System Settings', icon: Settings },
+    { to: '/dashboard/assurances', label: 'Assurances', tooltip: 'Assurances', icon: Building2 },
+    { to: '/dashboard/personnel', label: 'Personnel', tooltip: 'Gestion du Personnel', icon: Users },
+    { to: '/dashboard/about', label: 'À Propos', tooltip: 'À Propos', icon: Info },
+    { to: '/dashboard/other-apps', label: 'Écosystème BIZMAP', tooltip: 'Marketplace BIZMAP', icon: Grid2x2 },
+    { to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp },
+    { to: '/dashboard/parametres', label: 'Paramètres', tooltip: 'Paramètres Administrateur', icon: Settings },
   ];
 
   const navItems = isAdmin ? adminNavItems : staffNavItems;
@@ -93,7 +93,7 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col">
           <span className="font-bold tracking-tight text-white leading-none">{settings.pharmacy.name}</span>
-          <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Management</span>
+          <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Gestion</span>
         </div>
       </div>
 

@@ -13,6 +13,9 @@ import InsuranceClaimReport from '@/pages/InsuranceClaimReport';
 import HelpCenter from '@/pages/HelpCenter';
 import About from '@/pages/About';
 import OtherApps from '@/pages/OtherApps';
+import GoogleMapsSolution from '@/pages/GoogleMapsSolution';
+import CustomAppsSolution from '@/pages/CustomAppsSolution';
+import SafeGuardSolution from '@/pages/SafeGuardSolution';
 import Parametres from '@/pages/Parametres';
 import Personnel from '@/pages/Personnel';
 
@@ -78,6 +81,30 @@ function App() {
           element={
             <ProtectedRoute requiredRole="administrator">
               <OtherApps />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="solutions/google-maps"
+          element={
+            <ProtectedRoute requiredRole="administrator">
+              <GoogleMapsSolution />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="solutions/custom-apps"
+          element={
+            <ProtectedRoute requiredRole="administrator">
+              <CustomAppsSolution />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="solutions/safeguard"
+          element={
+            <ProtectedRoute requiredRole="administrator">
+              <SafeGuardSolution />
             </ProtectedRoute>
           }
         />
