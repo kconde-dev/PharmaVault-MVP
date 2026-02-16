@@ -82,6 +82,51 @@ export function About() {
         </p>
       </section>
 
+      <section className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-black text-slate-900">Comparatif: Logiciels Traditionnels vs PharmaVault Pro (2026)</h3>
+        <p className="mt-2 text-sm leading-7 text-slate-700">
+          Ce tableau montre l&apos;ecart entre une solution de caisse classique et la nouvelle génération PharmaVault Pro.
+        </p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-100 text-left">
+                <th className="border border-slate-200 px-3 py-2 font-black text-slate-700">Caracteristique</th>
+                <th className="border border-slate-200 px-3 py-2 font-black text-slate-700">Logiciels Traditionnels (Type Pharma)</th>
+                <th className="border border-slate-200 px-3 py-2 font-black text-slate-700">PharmaVault Pro (2026)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-800">Vitesse</td>
+                <td className="border border-slate-200 px-3 py-2 text-slate-600">Lenteur au chargement</td>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-emerald-700">Instantanee (High-Speed Terminal)</td>
+              </tr>
+              <tr className="bg-slate-50">
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-800">Securite</td>
+                <td className="border border-slate-200 px-3 py-2 text-slate-600">Modifications faciles a cacher</td>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-emerald-700">Audit Trail Inviolable (Zero-Fuite)</td>
+              </tr>
+              <tr>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-800">Internet</td>
+                <td className="border border-slate-200 px-3 py-2 text-slate-600">Dependance totale</td>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-emerald-700">100% Fonctionnel Hors-Ligne</td>
+              </tr>
+              <tr className="bg-slate-50">
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-800">Visibilite</td>
+                <td className="border border-slate-200 px-3 py-2 text-slate-600">Systeme ferme</td>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-emerald-700">Rapports WhatsApp Automatiques</td>
+              </tr>
+              <tr>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-800">Support</td>
+                <td className="border border-slate-200 px-3 py-2 text-slate-600">Difficile a joindre</td>
+                <td className="border border-slate-200 px-3 py-2 font-semibold text-emerald-700">Widget Support BIZMAP 24/7 integre</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <footer className="border-t border-slate-200 pt-5">
         <p className="text-xs text-slate-500">Une solution propulsée par l&apos;écosystème BIZMAP.</p>
       </footer>

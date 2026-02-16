@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, MapPinned, ShieldAlert, Wrench, X } from 'lucide-react';
+import { ArrowRight, MapPinned, ShieldAlert, Wrench, X, Timer, Crown, Rocket, ShieldCheck, WifiOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { openBizmapSupportChat } from '@/lib/bizmapSupport';
 
@@ -30,6 +30,91 @@ export function OtherApps() {
           Plus qu&apos;un logiciel, c&apos;est votre bras droit: PharmaVault sécurise vos revenus, gère vos assurances
           et vous envoie votre bilan chaque soir par WhatsApp.
         </p>
+        <p className="mt-3 text-sm leading-7 text-slate-700">
+          Nouveau: le terminal de vente haute vitesse, pensé pour les heures de pointe, permet un encaissement visuel,
+          vérifié et traçable par caissier.
+        </p>
+      </section>
+
+      <section className="rounded-3xl border border-emerald-300 bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-900 p-6 shadow-2xl shadow-emerald-500/10">
+        <div className="flex items-center gap-3">
+          <Timer className="h-6 w-6 text-emerald-300" />
+          <h3 className="text-lg font-black text-white">High-Speed Terminal (Cockpit Caissier)</h3>
+        </div>
+        <p className="mt-3 text-sm leading-7 text-slate-200">
+          Conçu pour les pharmacies sous pression, ce terminal plein écran réduit les erreurs de caisse avec
+          validation explicite, calcul de monnaie et historique instantané.
+        </p>
+        <p className="mt-3 text-sm leading-7 text-slate-300">
+          Timer de session en direct, suivi par caissier et pré-clôture avant la validation Admin: vos équipes restent rapides,
+          concentrées et responsables.
+        </p>
+        <blockquote className="mt-4 rounded-xl border border-emerald-400/30 bg-emerald-900/20 p-4 text-sm italic leading-7 text-emerald-100">
+          &quot;We don&apos;t just give you a database; we give you a cockpit. Our &apos;High-Speed Terminal&apos; is designed to
+          handle the busiest hours in Conakry. With a live session timer, cashier-specific tracking, and a built-in
+          change calculator, your staff stays focused, fast, and honest.&quot;
+        </blockquote>
+      </section>
+
+      <section className="relative overflow-hidden rounded-3xl border border-amber-300/40 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6 shadow-2xl shadow-amber-500/10">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-amber-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute -left-14 bottom-0 h-48 w-48 rounded-full bg-blue-400/20 blur-3xl" />
+        <div className="relative">
+          <div className="flex items-center gap-3">
+            <Crown className="h-6 w-6 text-amber-300" />
+            <h3 className="text-lg font-black text-white">PharmaVault Pro: Le Successeur de Pharma.</h3>
+          </div>
+          <p className="mt-3 text-sm leading-7 text-slate-200">
+            Une edition premium concue pour les pharmacies qui veulent passer d&apos;un logiciel classique a un cockpit moderne,
+            ultra-rapide et orienté croissance.
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+              <p className="flex items-center gap-2 text-sm font-black text-amber-200">
+                <WifiOff className="h-4 w-4" />
+                Offline-First Sync
+              </p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">Travaillez meme sans internet: la caisse continue et la synchro reprend automatiquement.</p>
+            </article>
+            <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+              <p className="flex items-center gap-2 text-sm font-black text-cyan-200">
+                <ShieldCheck className="h-4 w-4" />
+                Transparent Audit Trail
+              </p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">Chaque action est horodatée, attribuée et vérifiable pour une traçabilité totale.</p>
+            </article>
+            <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+              <p className="flex items-center gap-2 text-sm font-black text-emerald-200">
+                <Rocket className="h-4 w-4" />
+                2026 High-Performance UI
+              </p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">Terminal plein écran instantané, parcours caissier optimisé pour les heures de pointe.</p>
+            </article>
+            <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+              <p className="flex items-center gap-2 text-sm font-black text-amber-200">
+                <Crown className="h-4 w-4" />
+                Full Customization
+              </p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">Adaptez les flux, les champs et les rapports a votre modèle de pharmacie.</p>
+            </article>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={openBizmapSupportChat}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-950 hover:bg-amber-300"
+            >
+              Migrer depuis l&apos;ancien logiciel
+            </button>
+            <button
+              type="button"
+              onClick={openBizmapSupportChat}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/50 px-4 py-2 text-xs font-black uppercase tracking-wider text-cyan-100 hover:bg-cyan-900/20"
+            >
+              Demander une demo Pro
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-2xl shadow-slate-400/20">

@@ -177,13 +177,13 @@ export const Personnel: React.FC = () => {
           {error && (
             <div className="p-5 rounded-2xl bg-rose-50 border border-rose-100 flex items-center gap-4 text-rose-600">
               <AlertCircle className="h-5 w-5" />
-              <p className="text-xs font-bold uppercase tracking-widest">{error}</p>
+              <p className="text-xs font-bold uppercase tracking-widest">Erreur: {error}</p>
             </div>
           )}
           {successMessage && (
             <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center gap-4 text-emerald-600">
               <ShieldCheck className="h-5 w-5" />
-              <p className="text-xs font-bold uppercase tracking-widest">{successMessage}</p>
+              <p className="text-xs font-bold uppercase tracking-widest">Succès: {successMessage}</p>
             </div>
           )}
           {!isOnline && (

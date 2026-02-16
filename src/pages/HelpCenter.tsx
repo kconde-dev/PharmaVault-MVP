@@ -3,8 +3,8 @@ import { BookOpen, ShieldCheck, ShieldAlert, FileText, BarChart3, ClipboardCheck
 import { buildWhatsAppLink } from '@/lib/whatsapp';
 
 const tabs = [
-  { id: 'staff', label: 'Espace Staff', tooltip: 'Staff usage guide' },
-  { id: 'admin', label: 'Espace Admin', tooltip: 'Admin usage guide' },
+  { id: 'staff', label: 'Espace Staff', tooltip: 'Guide d’utilisation staff' },
+  { id: 'admin', label: 'Espace Admin', tooltip: 'Guide d’utilisation administrateur' },
 ] as const;
 
 export function HelpCenter() {
@@ -16,7 +16,7 @@ export function HelpCenter() {
   return (
     <div className="p-6 lg:p-8 space-y-10">
       <header>
-        <h1 className="text-3xl font-black text-slate-900" title="User Guide">Guide d'Utilisation</h1>
+          <h1 className="text-3xl font-black text-slate-900" title="Guide d'Utilisation">Guide d'Utilisation</h1>
         <p className="text-sm text-slate-500" title="Operational handbook for staff and admins">
           Manuel opérationnel détaillé pour exécuter sans erreur et superviser sans angle mort.
         </p>
@@ -43,7 +43,7 @@ export function HelpCenter() {
         <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 space-y-6 shadow-2xl shadow-slate-400/20">
           <div className="flex items-center gap-2 text-slate-900">
             <BookOpen className="h-5 w-5 text-emerald-300" />
-            <h2 className="text-lg font-black text-white" title="Frontline staff workflow">Staff Hub</h2>
+            <h2 className="text-lg font-black text-white" title="Espace Staff">Espace Staff</h2>
           </div>
           <p className="text-sm leading-7 text-slate-200">
             Ce parcours est conçu pour sécuriser la caisse tout en gardant un rythme rapide au comptoir.
@@ -64,7 +64,7 @@ export function HelpCenter() {
               Pour les dépenses, créez la demande et laissez-la en <strong>En Attente</strong> pour validation admin.
             </li>
             <li>
-              Règle sécurité 2026: le <strong>Insurance Card ID</strong> est obligatoire pour toute réclamation.
+              Règle sécurité 2026: le <strong>N° Carte d&apos;Assurance</strong> est obligatoire pour toute demande de remboursement.
             </li>
             <li>
               Avant la fermeture, relisez le Journal Quotidien pour corriger les erreurs de saisie détectées.
@@ -87,23 +87,23 @@ export function HelpCenter() {
         <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 space-y-6 shadow-2xl shadow-slate-400/20">
           <div className="flex items-center gap-2 text-white">
             <ShieldCheck className="h-5 w-5 text-cyan-300" />
-            <h2 className="text-lg font-black" title="Administrator control workflow">Admin Hub</h2>
+            <h2 className="text-lg font-black" title="Espace Administrateur">Espace Administrateur</h2>
           </div>
           <p className="text-sm leading-7 text-slate-200">
             L'espace admin combine gouvernance financière, contrôle des risques et décision stratégique.
           </p>
           <ol className="list-decimal pl-5 space-y-3 text-sm text-slate-200">
             <li>
-              Audit Workflow: consultez les logs SafeGuard pour analyser alertes intrusion, tentative de vol et écarts.
+              Journal d&apos;Audit: consultez les journaux SafeGuard pour analyser alertes intrusion, tentative de vol et écarts.
             </li>
             <li>
               Pilotez l'approbation/rejet des dépenses en attente pour verrouiller les sorties non autorisées.
             </li>
             <li>
-              Exportez les <strong>Bordereaux d'Assurance</strong> (Claim Reports) pour remboursement.
+              Exportez les <strong>Bordereaux d&apos;Assurance</strong> (Demandes de Remboursement) pour accélérer le règlement.
             </li>
             <li>
-              Decision Making: exploitez les analytics dashboard pour identifier les médicaments top-selling.
+              Pilotage décisionnel: exploitez le tableau d&apos;analyse pour identifier les médicaments les plus vendus.
             </li>
             <li>
               Contrôlez les créances assurance restantes et suivez les règlements pour maîtriser votre trésorerie réelle.
@@ -136,9 +136,9 @@ export function HelpCenter() {
             </p>
           </div>
           <div>
-            <p className="font-bold text-slate-900">Pourquoi le Card ID assurance est-il obligatoire ?</p>
+            <p className="font-bold text-slate-900">Pourquoi le N° Carte assurance est-il obligatoire ?</p>
             <p>
-              Sans Card ID, la réclamation peut être rejetée lors des contrôles de remboursement 2026.
+              Sans N° Carte, la demande de remboursement peut être rejetée lors des contrôles 2026.
             </p>
           </div>
           <div>
@@ -153,9 +153,9 @@ export function HelpCenter() {
           target="_blank"
           rel="noreferrer"
           className="mt-6 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800"
-          title="Help Link"
+          title="Assistance"
         >
-          Help Link
+          Assistance
         </a>
       </section>
     </div>
