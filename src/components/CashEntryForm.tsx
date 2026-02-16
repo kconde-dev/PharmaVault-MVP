@@ -72,9 +72,8 @@ export function CashEntryForm({
             onChange={(e) => onChange({ ...value, method: e.target.value as PaymentMethod })}
             className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
           >
-            <option value="espèces">💵 Espèces</option>
-            <option value="orange_money">📱 Orange Money</option>
-            <option value="assurance">🏥 Assurance (Direct)</option>
+            <option value="Espèces">Espèces</option>
+            <option value="Orange Money (Code Marchand)">Orange Money (Code Marchand)</option>
           </select>
         </div>
 
@@ -116,6 +115,9 @@ export function CashEntryForm({
                     Impossible de charger la liste des assurances: {insuranceLoadError}
                   </p>
                 )}
+                <p className="mt-2 text-xs text-slate-600">
+                  La part assurance est calculée automatiquement. Sélectionnez ici le mode de paiement pour le reste à charge du client.
+                </p>
               </div>
 
               <div>

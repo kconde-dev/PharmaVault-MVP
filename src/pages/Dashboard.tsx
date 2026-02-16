@@ -10,24 +10,71 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { generateWhatsAppMessage, shareViaWhatsApp } from '@/lib/whatsapp';
+import { downloadShiftReceiptPDF } from '@/lib/pdf';
 import type { Shift, Transaction, PaymentMethod } from '@/lib/database.types';
 import { formatSupabaseError } from '@/lib/supabaseError';
 
 function toModernPaymentMethod(method: PaymentMethod): 'cash' | 'mobile_money' | 'card' {
-  if (method === 'espèces') return 'cash';
-  if (method === 'orange_money') return 'mobile_money';
+  if (method === 'espèces' || method === 'Espèces') return 'cash';
+  if (method === 'orange_money' || method === 'Orange Money (Code Marchand)') return 'mobile_money';
   return 'card';
 }
 
 function fromModernPaymentMethod(method?: string): PaymentMethod {
-  if (method === 'cash') return 'espèces';
-  if (method === 'mobile_money') return 'orange_money';
-  return 'assurance';
+  if (method === 'cash') return 'Espèces';
+  if (method === 'mobile_money') return 'Orange Money (Code Marchand)';
+  if (method === 'card') return 'Espèces';
+  return 'Espèces';
+}
+
+type DbPaymentMethod = 'Espèces' | 'Orange Money (Code Marchand)';
+
+function getCashierName(raw: { email?: string | null; user_metadata?: Record<string, unknown> | null } | null): string {
+  if (!raw) return 'Caissier';
+  const meta = raw.user_metadata || {};
+  const fullName = typeof meta.full_name === 'string' ? meta.full_name.trim() : '';
+  if (fullName) return fullName;
+  const name = typeof meta.name === 'string' ? meta.name.trim() : '';
+  if (name) return name;
+  const email = String(raw.email || '').trim();
+  if (email.includes('@')) return email.split('@')[0];
+  return email || 'Caissier';
+}
+
+function normalizePaymentMethodForDb(raw: string): DbPaymentMethod {
+  const value = raw.trim().toLowerCase();
+  if (value === 'espèces' || value === 'especes' || value === 'cash') return 'Espèces';
+  if (
+    value === 'orange money (code marchand)'
+    || value === 'orange_money'
+    || value === 'mobile_money'
+    || value === 'orange money'
+  ) {
+    return 'Orange Money (Code Marchand)';
+  }
+  return 'Espèces';
+}
+
+function isCashMethod(method: string): boolean {
+  const normalized = normalizePaymentMethodForDb(method);
+  return normalized === 'Espèces';
+}
+
+function isOrangeMethod(method: string): boolean {
+  const normalized = normalizePaymentMethodForDb(method);
+  return normalized === 'Orange Money (Code Marchand)';
 }
 
 function normalizeTransaction(row: Record<string, unknown>): Transaction {
-  const modernType = String(row.type || '').toLowerCase();
-  const type = modernType === 'income' ? 'recette' : modernType === 'expense' ? 'dépense' : String(row.type || 'recette');
+  const rawType = String(row.type || '').toLowerCase();
+  const type =
+    rawType === 'income' || rawType === 'recette'
+      ? 'recette'
+      : rawType === 'retour' || rawType === 'refund' || rawType === 'returned'
+        ? 'retour'
+      : rawType === 'expense' || rawType === 'dépense' || rawType === 'depense'
+        ? 'dépense'
+        : 'recette';
   const method = row.method ? String(row.method) : fromModernPaymentMethod(typeof row.payment_method === 'string' ? row.payment_method : undefined);
   const normalizeStatus = (raw: unknown, approvedFlag: unknown, txType: string): 'pending' | 'approved' | 'rejected' => {
     const rawStatus = String(raw || '').toLowerCase();
@@ -48,9 +95,9 @@ function normalizeTransaction(row: Record<string, unknown>): Transaction {
     type: type as Transaction['type'],
     method: method as Transaction['method'],
     status,
-    insurance_name: (row.insurance_name as string | null) ?? null,
+    insurance_name: ((row.insurance_name as string | null) ?? (row.insurance_provider as string | null)) ?? null,
     insurance_id: (row.insurance_id as string | null) ?? null,
-    insurance_card_id: (row.insurance_card_id as string | null) ?? null,
+    insurance_card_id: ((row.insurance_card_id as string | null) ?? (row.matricule_number as string | null)) ?? null,
     insurance_percentage:
       row.insurance_percentage != null
         ? Number(row.insurance_percentage)
@@ -98,7 +145,7 @@ export function Dashboard() {
   // Recette form state
   const [recetteForm, setRecetteForm] = useState({
     amount: '',
-    method: 'espèces' as PaymentMethod,
+    method: 'Espèces' as PaymentMethod,
     isInsurancePayment: false,
     insuranceId: '',
     insuranceCardId: '',
@@ -119,7 +166,9 @@ export function Dashboard() {
     recettesEspeces: number;
     recettesOrangeMoney: number;
     recettesAssurance: number;
+    totalRetours: number;
     totalDepenses: number;
+    soldeNetARemettre: number;
     cashDifference: number;
   };
 
@@ -299,6 +348,11 @@ export function Dashboard() {
       return;
     }
 
+    if (recetteForm.isInsurancePayment && recetteForm.method === 'assurance') {
+      setError('Pour une vente assurance, choisissez un mode de paiement client (Ticket Modérateur).');
+      return;
+    }
+
     if (recetteForm.isInsurancePayment && !recetteForm.insuranceCardId.trim()) {
       setError('Veuillez renseigner le N° Carte / Matricule.');
       return;
@@ -309,46 +363,75 @@ export function Dashboard() {
       return;
     }
 
+    // Refresh auth context before write to avoid stale user/session data.
+    const { data: freshUserData, error: freshUserError } = await supabase.auth.getUser();
+    if (freshUserError) {
+      setError(formatSupabaseError(freshUserError, 'Impossible de vérifier la session utilisateur.'));
+      return;
+    }
+    const writer = freshUserData.user || user;
+    if (!writer?.id) {
+      setError('Session utilisateur invalide. Veuillez vous reconnecter.');
+      return;
+    }
+
     const totalAmount = parseFloat(recetteForm.amount);
-    const coverageRatio = recetteForm.isInsurancePayment ? recetteForm.insurancePercentage / 100 : 0;
-    const amountCoveredByInsurance = Number((totalAmount * coverageRatio).toFixed(2));
+    const coveragePercent = recetteForm.isInsurancePayment ? recetteForm.insurancePercentage : 0;
+    const insurancePart = Number((totalAmount * (coveragePercent / 100)).toFixed(2));
+    const patientPart = Number((totalAmount - insurancePart).toFixed(2));
     const selectedInsurance = insurances.find((i) => i.id === recetteForm.insuranceId);
     const insuranceName = selectedInsurance?.name || 'Assurance';
-    const paymentMethod: PaymentMethod = recetteForm.method;
+    const paymentMethod: DbPaymentMethod = normalizePaymentMethodForDb(String(recetteForm.method || 'Espèces'));
+    const cashierName = getCashierName({
+      email: writer.email,
+      user_metadata: writer.user_metadata as Record<string, unknown> | null,
+    });
 
-    const payload = transactionSchema === 'legacy'
-      ? {
+    const payloadBase = {
+      shift_id: currentShift.id,
+      amount: totalAmount,
+      description: recetteForm.isInsurancePayment
+        ? `Recette assurance: ${insuranceName} | Carte: ${recetteForm.insuranceCardId}`
+        : 'Recette',
+      type: 'Recette',
+      category: 'Vente',
+      payment_method: paymentMethod,
+      status: 'approved',
+      insurance_name: recetteForm.isInsurancePayment ? insuranceName : null,
+      created_by: writer.id,
+      cashier_name: cashierName,
+      is_approved: true,
+      ...(recetteForm.isInsurancePayment
+        ? {
+          insurance_id: recetteForm.insuranceId,
+          insurance_card_id: recetteForm.insuranceCardId,
+          coverage_percent: coveragePercent,
+          amount_covered_by_insurance: insurancePart,
+        }
+        : {}),
+    };
+
+    // Primary write path, then minimal schema fallback.
+    let { error: insertError } = await supabase.from('transactions').insert(payloadBase);
+
+    if (insertError) {
+      const payloadMinimal = {
         shift_id: currentShift.id,
         amount: totalAmount,
-        description: 'Recette',
-        type: 'recette',
-        method: paymentMethod,
-        status: 'approved',
-        insurance_name: recetteForm.isInsurancePayment ? insuranceName : null,
-        insurance_id: recetteForm.isInsurancePayment ? recetteForm.insuranceId : null,
-        insurance_card_id: recetteForm.isInsurancePayment ? recetteForm.insuranceCardId : null,
-        coverage_percent: recetteForm.isInsurancePayment ? recetteForm.insurancePercentage : null,
-        amount_covered_by_insurance: recetteForm.isInsurancePayment ? amountCoveredByInsurance : 0,
-        created_by: user.id,
-        is_approved: true,
-      }
-      : {
-        amount: totalAmount,
-        type: 'income',
-        category: recetteForm.isInsurancePayment ? 'Assurance' : 'Vente',
         description: recetteForm.isInsurancePayment
           ? `Recette assurance: ${insuranceName} | Carte: ${recetteForm.insuranceCardId}`
           : 'Recette',
-        cashier_id: user.id,
-        payment_method: toModernPaymentMethod(paymentMethod),
-        insurance_id: recetteForm.isInsurancePayment ? recetteForm.insuranceId : null,
-        insurance_card_id: recetteForm.isInsurancePayment ? recetteForm.insuranceCardId : null,
-        coverage_percent: recetteForm.isInsurancePayment ? recetteForm.insurancePercentage : null,
-        amount_covered_by_insurance: recetteForm.isInsurancePayment ? amountCoveredByInsurance : 0,
+        type: 'Recette',
+        category: 'Vente',
+        payment_method: paymentMethod,
         status: 'approved',
+        insurance_name: recetteForm.isInsurancePayment ? insuranceName : null,
+        created_by: writer.id,
+        is_approved: true,
       };
-
-    const { error: insertError } = await supabase.from('transactions').insert(payload);
+      const retryMinimal = await supabase.from('transactions').insert(payloadMinimal);
+      insertError = retryMinimal.error;
+    }
 
     if (insertError) {
       setError(formatSupabaseError(insertError, 'Erreur lors de l\'enregistrement.'));
@@ -358,7 +441,7 @@ export function Dashboard() {
     // Reset and refresh
     setRecetteForm({
       amount: '',
-      method: 'espèces',
+      method: 'Espèces',
       isInsurancePayment: false,
       insuranceId: '',
       insuranceCardId: '',
@@ -370,9 +453,7 @@ export function Dashboard() {
 
   const handleApprove = async (id: string) => {
     if (!user) return;
-    const updatePayload = transactionSchema === 'legacy'
-      ? { status: 'validé', is_approved: true, approved_by: user.id, approved_at: new Date().toISOString() }
-      : { status: 'approved', approved_by: user.id, approved_at: new Date().toISOString() };
+    const updatePayload = { status: 'approved', is_approved: true, approved_by: user.id, approved_at: new Date().toISOString() };
 
     const { error: updateError } = await supabase
       .from('transactions')
@@ -388,9 +469,7 @@ export function Dashboard() {
 
   const handleReject = async (id: string) => {
     if (!user) return;
-    const updatePayload = transactionSchema === 'legacy'
-      ? { status: 'rejeté', is_approved: false }
-      : { status: 'rejected', rejected_by: user.id, rejected_at: new Date().toISOString() };
+    const updatePayload = { status: 'rejected', is_approved: false, rejected_by: user.id, rejected_at: new Date().toISOString() };
 
     const { error: updateError } = await supabase
       .from('transactions')
@@ -422,26 +501,36 @@ export function Dashboard() {
 
     // Calculate totals by method
     const recettesEspeces = transactions
-      .filter(t => t.type === 'recette' && t.method === 'espèces')
+      .filter(t => t.type === 'recette' && isCashMethod(String(t.method)))
       .reduce((sum, t) => sum + getPatientCashPart(t), 0);
 
     const recettesOrangeMoney = transactions
-      .filter(t => t.type === 'recette' && t.method === 'orange_money')
+      .filter(t => t.type === 'recette' && isOrangeMethod(String(t.method)))
       .reduce((sum, t) => sum + getPatientCashPart(t), 0);
 
     const recettesAssurance = transactions
       .filter(t => t.type === 'recette' && isInsuranceTransaction(t))
       .reduce((sum, t) => sum + getInsuranceCoveredAmount(t), 0);
 
-    const totalRecettes = recettesEspeces + recettesOrangeMoney + recettesAssurance;
+    const totalRetours = Math.abs(
+      transactions
+        .filter(t => t.type === 'retour')
+        .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+    );
+
+    const totalRecettes = transactions
+      .filter(t => t.type === 'recette')
+      .reduce((sum, t) => sum + getPatientCashPart(t) + getInsuranceCoveredAmount(t), 0);
 
     const totalDepenses = transactions
       .filter(t => t.type === 'dépense' && t.status === 'approved')
       .reduce((sum, t) => sum + t.amount, 0);
 
+    const soldeNetARemettre = (recettesEspeces + recettesOrangeMoney) - totalRetours - totalDepenses;
+
     // Expected cash = espèces income + approved espèces expenses
     const expectedCash = transactions
-      .filter(t => t.method === 'espèces')
+      .filter(t => isCashMethod(String(t.method)))
       .reduce((sum, t) => {
         if (t.type === 'recette') {
           return sum + getPatientCashPart(t);
@@ -477,7 +566,9 @@ export function Dashboard() {
       recettesEspeces,
       recettesOrangeMoney,
       recettesAssurance,
+      totalRetours,
       totalDepenses,
+      soldeNetARemettre,
       cashDifference,
     });
 
@@ -489,22 +580,74 @@ export function Dashboard() {
     .filter(t => t.type === 'recette')
     .reduce((sum, t) => sum + getPatientCashPart(t), 0);
 
+  const totalRetoursClient = Math.abs(
+    transactions
+      .filter(t => t.type === 'retour')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+  );
+
   const totalDepenses = transactions
     .filter(t => t.type === 'dépense' && t.status === 'approved')
     .reduce((sum, t) => sum + t.amount, 0);
 
   // Breakdown of recettes by method
   const recettesEspeces = transactions
-    .filter(t => t.type === 'recette' && t.method === 'espèces')
+    .filter(t => t.type === 'recette' && isCashMethod(String(t.method)))
     .reduce((sum, t) => sum + getPatientCashPart(t), 0);
 
   const recettesOrangeMoney = transactions
-    .filter(t => t.type === 'recette' && t.method === 'orange_money')
+    .filter(t => t.type === 'recette' && isOrangeMethod(String(t.method)))
     .reduce((sum, t) => sum + getPatientCashPart(t), 0);
 
   const recettesAssurance = transactions
     .filter(t => t.type === 'recette' && isInsuranceTransaction(t))
     .reduce((sum, t) => sum + getInsuranceCoveredAmount(t), 0);
+
+  const totalEspecesCaisse = transactions
+    .filter(t => isCashMethod(String(t.method)))
+    .reduce((sum, t) => {
+      if (t.type === 'recette') return sum + getPatientCashPart(t);
+      if (t.type === 'retour') return sum + Number(t.amount || 0);
+      if (t.type === 'dépense' && t.status === 'approved') return sum - t.amount;
+      return sum;
+    }, 0);
+
+  const totalOrangeMoney = transactions
+    .filter(t => isOrangeMethod(String(t.method)))
+    .reduce((sum, t) => {
+      if (t.type === 'recette') return sum + getPatientCashPart(t);
+      if (t.type === 'retour') return sum + Number(t.amount || 0);
+      return sum;
+    }, 0);
+
+  const soldeNetARemettre = totalEspecesCaisse + totalOrangeMoney;
+
+  const handleGenerateDailyReport = () => {
+    try {
+      const dateLabel = new Date().toLocaleDateString('fr-FR');
+      const format = (value: number) => Number(value || 0).toFixed(2).replace('.', ',');
+      const message =
+        `Rapport Pharmacie Djoma - ${dateLabel}. ` +
+        `Espèces: ${format(totalEspecesCaisse)} GNF, ` +
+        `OM: ${format(totalOrangeMoney)} GNF, ` +
+        `Retours: ${format(totalRetoursClient)} GNF. ` +
+        `Solde Net: ${format(soldeNetARemettre)} GNF. ` +
+        `Propulsé par BIZMAP.`;
+
+      downloadShiftReceiptPDF({
+        date: dateLabel,
+        cashierName: user?.email?.split('@')[0] || 'Caissier',
+        expectedCash: totalEspecesCaisse,
+        actualCash: totalEspecesCaisse,
+        cashDifference: 0,
+      });
+
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de générer le rapport de clôture.');
+    }
+  };
 
   const gardeStatus = currentShift
     ? `En cours depuis ${new Date(currentShift.started_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
@@ -519,7 +662,7 @@ export function Dashboard() {
             <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-[0.2em]">Pilotage Officine</span>
           </div>
           <h1 className="text-3xl font-black tracking-tight text-slate-900">
-            Tableau de Bord
+            Pharmacie Djoma
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
             Session {role}: <span className="font-bold text-slate-900">{user?.email?.split('@')[0]}</span>
@@ -611,6 +754,13 @@ export function Dashboard() {
               </div>
 
               <div className="border-t border-border pt-4">
+                <p className="text-sm text-muted-foreground">Retours Client</p>
+                <p className="mt-1 font-semibold text-foreground">
+                  {closedShiftSummary.totalRetours.toFixed(2).replace('.', ',')} GNF
+                </p>
+              </div>
+
+              <div className="border-t border-border pt-4">
                 <p className="text-sm text-muted-foreground">Écart de Caisse</p>
                 <p
                   className={`mt-1 text-lg font-bold ${closedShiftSummary.cashDifference === 0
@@ -655,12 +805,42 @@ export function Dashboard() {
               </Button>
               <Button
                 onClick={() => {
+                  downloadShiftReceiptPDF({
+                    date: closedShiftSummary.date,
+                    cashierName: user?.email?.split('@')[0] || 'Caissier',
+                    expectedCash: closedShiftSummary.recettesEspeces,
+                    actualCash: closedShiftSummary.recettesEspeces,
+                    cashDifference: 0,
+                  });
+
+                  const ownerMessage =
+                    `*RAPPORT JOURNALIER - PHARMACIE DJOMA*\n` +
+                    `-----------------------------------\n` +
+                    `📅 Date: ${closedShiftSummary.date}\n` +
+                    `💰 Espèces: ${closedShiftSummary.recettesEspeces.toFixed(2).replace('.', ',')} GNF\n` +
+                    `📱 Orange Money: ${closedShiftSummary.recettesOrangeMoney.toFixed(2).replace('.', ',')} GNF\n` +
+                    `🔄 Retours: ${closedShiftSummary.totalRetours.toFixed(2).replace('.', ',')} GNF\n` +
+                    `📉 Dépenses: ${closedShiftSummary.totalDepenses.toFixed(2).replace('.', ',')} GNF\n` +
+                    `✅ *Net à Remettre: ${closedShiftSummary.soldeNetARemettre.toFixed(2).replace('.', ',')} GNF*\n` +
+                    `-----------------------------------\n` +
+                    `Propulsé par BIZMAP - Croissance Digitale.`;
+
+                  const ownerUrl = `https://wa.me/?text=${encodeURIComponent(ownerMessage)}`;
+                  window.open(ownerUrl, '_blank', 'noopener,noreferrer');
+                }}
+                className="gap-2 bg-emerald-800 hover:bg-emerald-900"
+              >
+                <Share2 className="h-4 w-4" />
+                Partager sur WhatsApp Propriétaire
+              </Button>
+              <Button
+                onClick={() => {
                   setClosedShiftSummary(null);
                   window.location.href = '/dashboard';
                 }}
                 variant="outline"
               >
-                Retour au Tableau de bord
+                Retour à Pharmacie Djoma
               </Button>
             </div>
           </section>
@@ -711,6 +891,45 @@ export function Dashboard() {
                 className="border-l-4 border-l-rose-500"
               />
             </div>
+
+            <section className="mb-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">Clôture de Caisse</h2>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                    Synthèse Quotidienne PharmaVault
+                  </p>
+                </div>
+                <Button
+                  onClick={handleGenerateDailyReport}
+                  className="h-11 rounded-xl bg-emerald-600 px-5 font-bold text-white hover:bg-emerald-700"
+                >
+                  Générer Rapport PDF & WhatsApp
+                </Button>
+              </div>
+              <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">💵 Espèces en Caisse</p>
+                  <p className="mt-1 text-lg font-black text-slate-900">{totalEspecesCaisse.toFixed(2).replace('.', ',')} GNF</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">📱 Orange Money</p>
+                  <p className="mt-1 text-lg font-black text-slate-900">{totalOrangeMoney.toFixed(2).replace('.', ',')} GNF</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">🔄 Retours Client</p>
+                  <p className="mt-1 text-lg font-black text-slate-900">{totalRetoursClient.toFixed(2).replace('.', ',')} GNF</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">📉 Dépenses</p>
+                  <p className="mt-1 text-lg font-black text-slate-900">{totalDepenses.toFixed(2).replace('.', ',')} GNF</p>
+                </div>
+              </div>
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Solde Net à Remettre</p>
+                <p className="mt-1 text-xl font-black text-emerald-700">{soldeNetARemettre.toFixed(2).replace('.', ',')} GNF</p>
+              </div>
+            </section>
 
             <section className="space-y-6">
               <div className="flex items-center gap-3">
@@ -840,7 +1059,7 @@ export function Dashboard() {
                 <div className="mb-4 rounded-lg border border-border bg-card p-4">
                   <p className="text-sm text-muted-foreground">
                     <strong>Espèces attendues :</strong> {transactions
-                      .filter(t => t.method === 'espèces')
+                      .filter(t => isCashMethod(String(t.method)))
                       .reduce((sum, t) => {
                         if (t.type === 'recette') {
                           return sum + getPatientCashPart(t);

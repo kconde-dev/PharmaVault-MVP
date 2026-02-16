@@ -8,9 +8,21 @@ import type { Shift, Transaction, PaymentMethod } from '@/lib/database.types';
 import { formatSupabaseError } from '@/lib/supabaseError';
 
 function toModernPaymentMethod(method: PaymentMethod): 'cash' | 'mobile_money' | 'card' {
-  if (method === 'espèces') return 'cash';
-  if (method === 'orange_money') return 'mobile_money';
+  if (method === 'espèces' || method === 'Espèces') return 'cash';
+  if (method === 'orange_money' || method === 'Orange Money (Code Marchand)') return 'mobile_money';
   return 'card';
+}
+
+function normalizeMethodLabel(method: string): PaymentMethod {
+  if (method === 'Espèces' || method === 'Orange Money (Code Marchand)' || method === 'espèces' || method === 'orange_money') {
+    return method;
+  }
+  return 'Espèces';
+}
+
+function isExpenseType(type: string): boolean {
+  const value = type.toLowerCase();
+  return value === 'dépense' || value === 'depense' || value === 'expense';
 }
 
 export function Depenses() {
@@ -27,7 +39,7 @@ export function Depenses() {
   const [formData, setFormData] = useState({
     amount: '',
     description: '',
-    method: 'espèces' as PaymentMethod,
+    method: 'Espèces' as PaymentMethod,
   });
 
   // Fetch active shift
@@ -62,11 +74,25 @@ export function Depenses() {
         || rows.some((row) => typeof row.shift_id === 'string' || typeof row.method === 'string');
     setTransactionSchema(hasLegacyShape ? 'legacy' : 'modern');
     const normalized = rows
-      .filter((t) => t.type === 'dépense' || t.type === 'expense')
+      .filter((t) => isExpenseType(String(t.type || '')))
       .map((t) => ({
         ...t,
         type: 'dépense',
-        method: t.method || (t.payment_method === 'cash' ? 'espèces' : t.payment_method === 'mobile_money' ? 'orange_money' : 'assurance'),
+        method: normalizeMethodLabel(
+          String(
+            t.method ||
+            (t.payment_method === 'Espèces'
+              ? 'Espèces'
+              : t.payment_method === 'Orange Money (Code Marchand)'
+                ? 'Orange Money (Code Marchand)'
+                :
+            (t.payment_method === 'cash'
+              ? 'Espèces'
+              : t.payment_method === 'mobile_money'
+                ? 'Orange Money (Code Marchand)'
+                : 'Espèces'))
+          )
+        ),
         created_by: t.created_by || t.cashier_id || '',
         status: t.status === 'validé' || t.status === 'approved' || t.is_approved === true
           ? 'approved'
@@ -140,26 +166,17 @@ export function Depenses() {
     }
 
     setIsLoading(true);
-    const payload = transactionSchema === 'legacy'
-      ? {
-        shift_id: currentShift.id,
-        amount: parseFloat(formData.amount),
-        description: formData.description,
-        type: 'dépense',
-        method: formData.method,
-        status: 'en_attente',
-        is_approved: false,
-        created_by: user.id,
-      }
-      : {
-        amount: parseFloat(formData.amount),
-        type: 'expense',
-        category: 'Dépense',
-        description: formData.description,
-        cashier_id: user.id,
-        payment_method: toModernPaymentMethod(formData.method),
-        status: 'pending',
-      };
+    const payload = {
+      shift_id: currentShift.id,
+      amount: parseFloat(formData.amount),
+      description: formData.description,
+      type: 'Dépense',
+      category: 'Dépense',
+      payment_method: formData.method,
+      status: 'approved',
+      is_approved: true,
+      created_by: user.id,
+    };
 
     const { error: insertError } = await supabase.from('transactions').insert(payload);
 
@@ -171,7 +188,7 @@ export function Depenses() {
     }
 
     // Reset form and refresh list
-    setFormData({ amount: '', description: '', method: 'espèces' });
+    setFormData({ amount: '', description: '', method: 'Espèces' });
     setShowForm(false);
     await refreshTransactions();
   };
@@ -197,18 +214,12 @@ export function Depenses() {
     if (!confirm('Êtes-vous sûr de vouloir approuver cette dépense ?')) return;
 
     setError(null);
-    const updatePayload = transactionSchema === 'legacy'
-      ? {
-        status: 'validé',
-        is_approved: true,
-        approved_by: user?.id,
-        approved_at: new Date().toISOString(),
-      }
-      : {
-        status: 'approved',
-        approved_by: user?.id,
-        approved_at: new Date().toISOString(),
-      };
+    const updatePayload = {
+      status: 'approved',
+      is_approved: true,
+      approved_by: user?.id,
+      approved_at: new Date().toISOString(),
+    };
 
     const { error: updateError } = await supabase
       .from('transactions')
@@ -227,9 +238,12 @@ export function Depenses() {
     if (!confirm('Êtes-vous sûr de vouloir rejeter cette dépense ?')) return;
 
     setError(null);
-    const updatePayload = transactionSchema === 'legacy'
-      ? { status: 'rejeté', is_approved: false }
-      : { status: 'rejected', rejected_by: user?.id, rejected_at: new Date().toISOString() };
+    const updatePayload = {
+      status: 'rejected',
+      is_approved: false,
+      rejected_by: user?.id,
+      rejected_at: new Date().toISOString(),
+    };
 
     const { error: updateError } = await supabase
       .from('transactions')
@@ -470,9 +484,8 @@ export function Depenses() {
                   }
                   className="w-full h-12 bg-slate-100 border border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none"
                 >
-                  <option value="espèces">💵 Espèces</option>
-                  <option value="orange_money">📱 Orange Money</option>
-                  <option value="assurance">🏥 Assurance</option>
+                  <option value="Espèces">Espèces</option>
+                  <option value="Orange Money (Code Marchand)">Orange Money (Code Marchand)</option>
                 </select>
               </div>
             </div>
@@ -552,7 +565,15 @@ export function Depenses() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1.5">
-                        {tx.method === 'espèces' ? '💵 Espèces' : tx.method === 'orange_money' ? '📱 O. Money' : '🏥 Assurance'}
+                        {tx.method === 'espèces'
+                          ? '💵 Espèces'
+                          : tx.method === 'orange_money'
+                            ? '📱 O. Money'
+                            : tx.method === 'virement_cheque'
+                              ? '🏦 Virement / Chèque'
+                              : tx.method === 'carte_bancaire'
+                                ? '💳 Carte Bancaire'
+                                : '💵 Espèces'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">

@@ -5,7 +5,7 @@ export function About() {
     <div className="p-6 lg:p-8 space-y-10">
       <header>
         <h1 className="text-3xl font-black text-slate-900" title="PharmaVault Coffre-Fort Numérique">
-          PharmaVault : Votre Coffre-Fort Numérique.
+          PharmaVault : Cloud-First ERP pour la Guinée.
         </h1>
         <p className="text-sm text-slate-700 leading-7 mt-3">
           PharmaVault applique une logique <span className="font-bold">Zero-Leak</span> pour verrouiller vos opérations.
@@ -44,12 +44,41 @@ export function About() {
       </section>
 
       <section className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-black text-slate-900">Sécurité et Intégrité des Données</h3>
+        <h3 className="text-lg font-black text-slate-900">Sécurité Zero-Leak & Sync Cloud Temps Réel</h3>
         <p className="mt-3 text-sm leading-7 text-slate-700">
-          Toutes les données PharmaVault sont chiffrées puis synchronisées dans le Cloud.
-          Ce modèle garantit qu&apos;une donnée ne peut pas être supprimée ni modifiée hors des règles de gouvernance
-          applicative. Toute action sensible suit un contrôle administrateur, pour empêcher les manipulations
-          non autorisées et préserver l&apos;historique métier.
+          PharmaVault combine un contrôle Zero-Leak et une synchronisation Cloud en temps réel:
+          chaque transaction, ajustement de stock et action utilisateur est instantanément horodaté et répliqué.
+          Vous gardez une vision opérationnelle continue, avec un historique fiable pour l&apos;audit, la conformité
+          et les décisions de gestion en officine, directement depuis votre smartphone.
+        </p>
+      </section>
+
+      <section className="grid gap-6 md:grid-cols-2">
+        <article className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-black text-slate-900">Pourquoi les propriétaires choisissent PharmaVault</h3>
+          <p className="mt-3 text-sm leading-7 text-slate-700">
+            En officine, une petite fuite quotidienne devient un grand manque à gagner mensuel. PharmaVault verrouille
+            les opérations sensibles, relie chaque mouvement à un utilisateur et fournit des preuves exploitables en cas
+            d&apos;écart de caisse, de stock ou de validation.
+          </p>
+        </article>
+        <article className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-black text-slate-900">Cloud-Sync en temps réel, même en charge</h3>
+          <p className="mt-3 text-sm leading-7 text-slate-700">
+            Les données sont synchronisées en continu: ventes, dépenses, clôtures et statuts d&apos;approbation.
+            Le manager suit son activité sans attendre la fin de journée, avec des rapports fiables pour
+            les décisions urgentes et la planification.
+          </p>
+        </article>
+      </section>
+
+      <section className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-black text-slate-900">Politique Zero-Leak: Retours clients tracés</h3>
+        <p className="mt-3 text-sm leading-7 text-slate-700">
+          PharmaVault applique une politique stricte de retour pour protéger la caisse: chaque retour validé
+          enregistre le motif, met à jour la transaction d&apos;origine et crée une contre-écriture négative.
+          Résultat: pas de fuite comptable, pas de "trou noir" dans les rapports, et une traçabilité complète
+          pour l&apos;audit administrateur.
         </p>
       </section>
 

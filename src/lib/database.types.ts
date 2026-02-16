@@ -1,5 +1,12 @@
-export type TransactionType = 'recette' | 'dépense';
-export type PaymentMethod = 'espèces' | 'orange_money' | 'assurance';
+export type TransactionType = 'recette' | 'dépense' | 'retour';
+export type PaymentMethod =
+    | 'Espèces'
+    | 'Orange Money (Code Marchand)'
+    | 'espèces'
+    | 'orange_money'
+    | 'virement_cheque'
+    | 'carte_bancaire'
+    | 'assurance';
 export type TransactionStatus = 'en_attente' | 'validé' | 'rejeté';
 
 export interface Transaction {

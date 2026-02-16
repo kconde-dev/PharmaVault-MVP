@@ -5,24 +5,25 @@ export function GoogleMapsSolution() {
     <div className="p-6 lg:p-8 space-y-8">
       <header>
         <h1 className="text-3xl font-black text-slate-900" title="Google Maps et SEO local">
-          Google Maps &amp; SEO : L&apos;Autoroute du Client
+          Visibilité Google Maps (Détails)
         </h1>
         <p className="mt-3 text-sm leading-7 text-slate-700">
-          Pourquoi rester invisible ? Si un client cherche &quot;Pharmacie ouverte&quot; ou &quot;Quincaillerie Conakry&quot;,
-          BIZMAP vous place en première position. Nous gérons vos avis clients, vos photos professionnelles
-          et votre positionnement pour que votre commerce soit celui que l&apos;on choisit.
+          À Conakry, si vous n&apos;êtes pas sur la carte, vous n&apos;existez pas.
         </p>
       </header>
 
       <section className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3">
           <TrendingUp className="h-6 w-6 text-emerald-600" />
-          <h2 className="text-xl font-black text-slate-900">Référencement Local qui Convertit</h2>
+          <h2 className="text-xl font-black text-slate-900">Top 3 Google 3-Pack</h2>
         </div>
         <p className="mt-3 text-sm leading-7 text-slate-700">
-          Atteindre le Top 3 Google Maps à Conakry peut augmenter le trafic en boutique jusqu&apos;à 40%.
-          Notre méthode combine optimisation de fiche, stratégie d&apos;avis, publication de visuels professionnels
-          et suivi des performances locales.
+          BIZMAP ne se contente pas de vous lister ; nous optimisons votre fiche pour que vous apparaissiez
+          dans le Google 3-Pack (les 3 premiers résultats). Plus d&apos;appels, plus d&apos;itinéraires, plus de ventes.
+        </p>
+        <p className="mt-3 text-sm leading-7 text-slate-700">
+          Sur des profils correctement optimisés, l&apos;augmentation de trafic local peut atteindre 40%:
+          davantage de visites en officine, de demandes urgentes et de clients réguliers.
         </p>
         <div className="mt-5 grid gap-4 md:grid-cols-3">
           <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">

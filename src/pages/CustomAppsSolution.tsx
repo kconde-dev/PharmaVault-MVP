@@ -42,6 +42,15 @@ export function CustomAppsSolution() {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-black text-slate-900">Processus "Made in Guinea" pour PME</h3>
+        <div className="mt-3 space-y-3 text-sm leading-7 text-slate-700">
+          <p><strong>1. Diagnostic terrain:</strong> immersion métier sur vos flux réels (caisse, stock, opérations) pour supprimer les points de friction.</p>
+          <p><strong>2. Conception locale:</strong> UX en français, logique adaptée aux usages guinéens, et intégration des paiements locaux.</p>
+          <p><strong>3. Déploiement progressif:</strong> livraison par modules, formation des équipes, support continu et améliorations pilotées par vos résultats.</p>
+        </div>
+      </section>
+
       <section className="rounded-2xl border border-slate-300 bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
         <div className="flex items-center gap-3 text-slate-100">
           <Building2 className="h-5 w-5 text-emerald-300" />

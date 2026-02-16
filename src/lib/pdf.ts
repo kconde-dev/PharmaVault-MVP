@@ -153,8 +153,8 @@ export function generateShiftReceipt({
     <body>
       <div class="receipt">
         <div class="header">
-          <div class="brand">PHARMAVAULT - REÇU OFFICIEL</div>
-          <div class="title">🔐 PharmaVault</div>
+          <div class="brand">PHARMACIE DJOMA - REÇU OFFICIEL</div>
+          <div class="title">Pharmacie Djoma</div>
           <div class="subtitle">Gestion Officinale Sécurisée</div>
         </div>
 

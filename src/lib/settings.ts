@@ -122,17 +122,6 @@ export const loadSettingsFromDatabase = async (): Promise<AppSettings> => {
     const row = (data && data.length > 0) ? data[0] : null;
 
     if (!row) {
-        // Seed the singleton row when missing (admin sessions will succeed).
-        await supabase
-            .from('pharmacy_settings')
-            .upsert(
-                {
-                    id: 1,
-                    ...settingsToRow(DEFAULT_SETTINGS),
-                    updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'id' },
-            );
         return getSettings();
     }
 

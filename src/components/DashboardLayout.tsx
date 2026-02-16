@@ -3,7 +3,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, SETTINGS_UPDATED_EVENT, type AppSettings } from '@/lib/settings';
-import { MapPin, Building2 } from 'lucide-react';
+import { MapPin, Building2, MessageCircleMore } from 'lucide-react';
+import { openBizmapSupportChat } from '@/lib/bizmapSupport';
 
 export function DashboardLayout() {
   const { role } = useAuth();
@@ -102,6 +103,18 @@ export function DashboardLayout() {
           <div className="max-w-[1600px] mx-auto">
             <Outlet />
           </div>
+
+          <button
+            type="button"
+            onClick={openBizmapSupportChat}
+            title="Besoin d'aide ? Contactez BIZMAP"
+            className="fixed bottom-6 right-6 z-40 group inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xl shadow-emerald-500/30 hover:bg-emerald-600 transition-all"
+          >
+            <MessageCircleMore className="h-7 w-7" />
+            <span className="pointer-events-none absolute right-16 whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
+              Besoin d'aide ? Contactez BIZMAP
+            </span>
+          </button>
         </main>
       </div>
     </div>
