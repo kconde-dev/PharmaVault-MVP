@@ -18,6 +18,7 @@ import CustomAppsSolution from '@/pages/CustomAppsSolution';
 import SafeGuardSolution from '@/pages/SafeGuardSolution';
 import Parametres from '@/pages/Parametres';
 import Personnel from '@/pages/Personnel';
+import Intelligence from '@/pages/Intelligence';
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
         />
         <Route path="daily-ledger" element={<DailyLedger />} />
         <Route path="help" element={<HelpCenter />} />
+        <Route path="intelligence" element={<Intelligence />} />
         <Route
           path="gardes"
           element={

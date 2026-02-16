@@ -554,6 +554,10 @@ export function Dashboard() {
       setError('Aucune garde active.');
       return;
     }
+    if (!user?.id) {
+      setError('Session utilisateur invalide. Veuillez vous reconnecter.');
+      return;
+    }
 
     if (!closeShiftForm.actualCash || isNaN(parseFloat(closeShiftForm.actualCash))) {
       setError('Montant du tiroir invalide.');
@@ -606,6 +610,17 @@ export function Dashboard() {
     // Difference between what's in the drawer and what we expect
     const cashDifference = actualCashAmount - expectedCash;
 
+    const { data: closingUserData, error: closingUserError } = await supabase.auth.getUser();
+    if (closingUserError) {
+      setError(formatSupabaseError(closingUserError, 'Impossible de verifier la session utilisateur.'));
+      return;
+    }
+    const closedById = closingUserData.user?.id || user.id;
+    if (!closedById) {
+      setError('Session utilisateur invalide. Veuillez vous reconnecter.');
+      return;
+    }
+
     const { error: updateError } = await supabase
       .from('shifts')
       .update({
@@ -613,7 +628,7 @@ export function Dashboard() {
         expected_cash: expectedCash,
         actual_cash: actualCashAmount,
         cash_difference: cashDifference,
-        closed_by: user?.id,
+        closed_by: closedById,
       })
       .eq('id', currentShift.id);
 
@@ -916,7 +931,7 @@ export function Dashboard() {
                       </div>
                       <div className="text-center">
                         <p className="text-[10px] font-black uppercase tracking-[0.35em] text-cyan-200/80">Temps Réel</p>
-                        <p className="mt-1 text-4xl font-black tracking-[0.12em] text-white md:text-6xl">{realTimeDisplay}</p>
+                        <p className="mt-1 text-5xl font-black tracking-[0.14em] text-white md:text-7xl">{realTimeDisplay}</p>
                         <div className="mt-2 flex items-center justify-center gap-2">
                           <p className="text-[10px] uppercase tracking-[0.25em] text-slate-300">{realtimeDate}</p>
                           <span

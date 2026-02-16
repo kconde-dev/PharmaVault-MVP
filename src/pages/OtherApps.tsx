@@ -114,6 +114,25 @@ export function OtherApps() {
               Demander une demo Pro
             </button>
           </div>
+          <div className="mt-6 rounded-2xl border border-amber-300/30 bg-slate-950/50 p-4">
+            <h4 className="text-sm font-black uppercase tracking-wider text-amber-200">PharmaVault Pro : La Souverainete Totale</h4>
+            <p className="mt-2 text-xs leading-6 text-slate-300">
+              <span className="font-bold text-slate-100">Hebergement Prive:</span> Vos donnees ne quittent jamais votre batiment.
+              Nous installons un serveur local dedie pour une vitesse foudroyante et une confidentialite absolue.
+            </p>
+            <p className="mt-2 text-xs leading-6 text-slate-300">
+              <span className="font-bold text-slate-100">IA Predictive:</span> Ne soyez jamais surpris par une rupture.
+              Notre IA analyse vos ventes historiques pour commander le bon stock au bon moment.
+            </p>
+            <p className="mt-2 text-xs leading-6 text-slate-300">
+              <span className="font-bold text-slate-100">Alertes SMS Critiques:</span> Si un produit sensible atteint un seuil critique,
+              le systeme vous envoie un SMS automatique. Vous gardez le controle, meme en deplacement.
+            </p>
+            <p className="mt-2 text-xs leading-6 text-slate-300">
+              <span className="font-bold text-slate-100">Migration Sans Effort:</span> Nous importons vos anciennes donnees "Pharma"
+              ou "Excel" en quelques minutes grace a notre moteur de nettoyage IA.
+            </p>
+          </div>
         </div>
       </section>
 

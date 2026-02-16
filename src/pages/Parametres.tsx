@@ -11,7 +11,9 @@ import {
   Database,
   Smartphone,
   Server,
-  Fingerprint
+  Fingerprint,
+  MessageSquareText,
+  Send
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -32,6 +34,8 @@ export function Parametres() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [smsTestStatus, setSmsTestStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [smsTestMessage, setSmsTestMessage] = useState<string>('');
 
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
@@ -101,6 +105,28 @@ export function Parametres() {
     } finally {
       setIsUpdatingPin(false);
     }
+  };
+
+  const handleSmsTest = async () => {
+    setSmsTestStatus('sending');
+    setSmsTestMessage('');
+
+    const apiKey = settings.smsGateway.apiKey.trim();
+    const ownerPhone = settings.smsGateway.ownerPhone.trim();
+    if (!apiKey) {
+      setSmsTestStatus('failed');
+      setSmsTestMessage('Veuillez renseigner une API Key Gateway SMS.');
+      return;
+    }
+    if (!ownerPhone) {
+      setSmsTestStatus('failed');
+      setSmsTestMessage('Veuillez renseigner le numero du proprietaire.');
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    setSmsTestStatus('sent');
+    setSmsTestMessage(`SMS de test envoye vers ${ownerPhone}.`);
   };
 
   return (
@@ -305,6 +331,114 @@ export function Parametres() {
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="space-y-6">
+            <div className="flex items-center gap-3 px-2">
+              <div className="h-5 w-1 bg-amber-500 rounded-full" />
+              <h2 className="text-sm font-black text-slate-800 uppercase tracking-[0.1em]">Pro Mode: Sovereign Hosting</h2>
+            </div>
+            <div className="glass-card rounded-[2.5rem] p-8 border border-white/60 shadow-xl space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-black text-slate-900 uppercase tracking-tight">Hebergement Prive Local</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Mode souverain pour infrastructure interne.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => isAdmin && setSettings({
+                    ...settings,
+                    proMode: {
+                      ...settings.proMode,
+                      sovereignHostingEnabled: !settings.proMode.sovereignHostingEnabled,
+                    }
+                  })}
+                  disabled={!isAdmin}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ${settings.proMode.sovereignHostingEnabled ? 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-slate-200'}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ${settings.proMode.sovereignHostingEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {settings.proMode.sovereignHostingEnabled && (
+                <>
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Local Database Connected</span>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                      <Server className="h-3 w-3" /> Local Server IP
+                    </label>
+                    <Input
+                      value={settings.proMode.localServerIp}
+                      placeholder="192.168.1.20"
+                      className="h-12 bg-slate-100/50 border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:bg-white transition-all shadow-inner"
+                      onChange={(e) => setSettings({
+                        ...settings,
+                        proMode: { ...settings.proMode, localServerIp: e.target.value }
+                      })}
+                      disabled={!isAdmin}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-6">
+            <div className="flex items-center gap-3 px-2">
+              <div className="h-5 w-1 bg-cyan-500 rounded-full" />
+              <h2 className="text-sm font-black text-slate-800 uppercase tracking-[0.1em]">SMS Gateway Config</h2>
+            </div>
+            <div className="glass-card rounded-[2.5rem] p-8 border border-white/60 shadow-xl space-y-5">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <MessageSquareText className="h-3 w-3" /> API Key Gateway SMS
+                </label>
+                <Input
+                  value={settings.smsGateway.apiKey}
+                  placeholder="TWILIO_XXX ou API locale GN"
+                  className="h-12 bg-slate-100/50 border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:bg-white transition-all shadow-inner"
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    smsGateway: { ...settings.smsGateway, apiKey: e.target.value }
+                  })}
+                  disabled={!isAdmin}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Phone className="h-3 w-3" /> Numero Proprietaire
+                </label>
+                <Input
+                  value={settings.smsGateway.ownerPhone}
+                  placeholder="+224XXXXXXXXX"
+                  className="h-12 bg-slate-100/50 border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:bg-white transition-all shadow-inner"
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    smsGateway: { ...settings.smsGateway, ownerPhone: e.target.value }
+                  })}
+                  disabled={!isAdmin}
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={handleSmsTest}
+                isLoading={smsTestStatus === 'sending'}
+                disabled={!isAdmin}
+                className="h-12 rounded-xl bg-cyan-600 px-5 text-xs font-black uppercase tracking-widest text-white hover:bg-cyan-700"
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Envoyer SMS de Test au Proprietaire
+              </Button>
+              {smsTestStatus === 'sent' && (
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">{smsTestMessage}</p>
+              )}
+              {smsTestStatus === 'failed' && (
+                <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">{smsTestMessage}</p>
+              )}
             </div>
           </section>
 

@@ -16,6 +16,14 @@ export interface WhatsAppSettings {
 export interface AppSettings {
     pharmacy: PharmacyInfo;
     whatsapp: WhatsAppSettings;
+    proMode: {
+        sovereignHostingEnabled: boolean;
+        localServerIp: string;
+    };
+    smsGateway: {
+        apiKey: string;
+        ownerPhone: string;
+    };
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -28,6 +36,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     whatsapp: {
         enabled: true,
         recipientNumber: '+224622000000',
+    },
+    proMode: {
+        sovereignHostingEnabled: false,
+        localServerIp: '192.168.1.20',
+    },
+    smsGateway: {
+        apiKey: '',
+        ownerPhone: '+224622000000',
     },
 };
 
@@ -48,6 +64,8 @@ function normalizeSettings(raw: unknown): AppSettings {
     const source = raw as Partial<AppSettings>;
     const pharmacy = source.pharmacy || {};
     const whatsapp = source.whatsapp || {};
+    const proMode = source.proMode || {};
+    const smsGateway = source.smsGateway || {};
 
     return {
         pharmacy: {
@@ -61,6 +79,26 @@ function normalizeSettings(raw: unknown): AppSettings {
             recipientNumber: typeof whatsapp.recipientNumber === 'string'
                 ? whatsapp.recipientNumber
                 : DEFAULT_SETTINGS.whatsapp.recipientNumber,
+        },
+        proMode: {
+            sovereignHostingEnabled:
+                typeof proMode.sovereignHostingEnabled === 'boolean'
+                    ? proMode.sovereignHostingEnabled
+                    : DEFAULT_SETTINGS.proMode.sovereignHostingEnabled,
+            localServerIp:
+                typeof proMode.localServerIp === 'string'
+                    ? proMode.localServerIp
+                    : DEFAULT_SETTINGS.proMode.localServerIp,
+        },
+        smsGateway: {
+            apiKey:
+                typeof smsGateway.apiKey === 'string'
+                    ? smsGateway.apiKey
+                    : DEFAULT_SETTINGS.smsGateway.apiKey,
+            ownerPhone:
+                typeof smsGateway.ownerPhone === 'string'
+                    ? smsGateway.ownerPhone
+                    : DEFAULT_SETTINGS.smsGateway.ownerPhone,
         },
     };
 }
@@ -76,6 +114,14 @@ function rowToSettings(row: PharmacySettingsRow): AppSettings {
         whatsapp: {
             enabled: row.whatsapp_enabled,
             recipientNumber: row.whatsapp_recipient_number,
+        },
+        proMode: {
+            sovereignHostingEnabled: DEFAULT_SETTINGS.proMode.sovereignHostingEnabled,
+            localServerIp: DEFAULT_SETTINGS.proMode.localServerIp,
+        },
+        smsGateway: {
+            apiKey: DEFAULT_SETTINGS.smsGateway.apiKey,
+            ownerPhone: DEFAULT_SETTINGS.smsGateway.ownerPhone,
         },
     };
 }

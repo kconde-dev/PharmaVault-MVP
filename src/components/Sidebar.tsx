@@ -7,6 +7,7 @@ import {
   CircleHelp,
   Info,
   Grid2x2,
+  BrainCircuit,
   BookOpenCheck,
   ShieldCheck,
   Settings,
@@ -38,6 +39,7 @@ export function Sidebar() {
     { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Tableau de bord', icon: LayoutDashboard },
     { to: '/dashboard/daily-ledger', label: 'Journal Quotidien', tooltip: 'Journal quotidien', icon: BookOpenCheck },
     { to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp },
+    { to: '/dashboard/intelligence', label: 'Intelligence', tooltip: 'Analyse IA Inventaire', icon: BrainCircuit },
   ];
 
   const adminNavItems: NavItem[] = [
@@ -47,6 +49,7 @@ export function Sidebar() {
     { to: '/dashboard/personnel', label: 'Personnel', tooltip: 'Gestion du Personnel', icon: Users },
     { to: '/dashboard/about', label: 'À Propos', tooltip: 'À Propos', icon: Info },
     { to: '/dashboard/other-apps', label: 'Écosystème BIZMAP', tooltip: 'Marketplace BIZMAP', icon: Grid2x2 },
+    { to: '/dashboard/intelligence', label: 'Intelligence', tooltip: 'Analyse IA Inventaire', icon: BrainCircuit },
     { to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp },
     { to: '/dashboard/parametres', label: 'Paramètres', tooltip: 'Paramètres Administrateur', icon: Settings },
   ];
