@@ -15,11 +15,16 @@ export interface Transaction {
     id: string;
     shift_id: string;
     amount: number;
+    total_amount?: number | null;
+    amount_paid?: number | null;
+    insurance_amount?: number | null;
     description: string;
     type: TransactionType;
     method: PaymentMethod;
     status: string;
     insurance_name: string | null;
+    insurance_provider?: string | null;
+    insurance_reference?: string | null;
     insurance_id?: string | null;
     insurance_card_id?: string | null;
     insurance_percentage?: number | null;
@@ -45,4 +50,13 @@ export interface Shift {
     actual_cash?: number | null;
     cash_difference?: number | null;
     closed_by?: string | null;
+}
+
+export interface Client {
+    id: string;
+    nom: string;
+    telephone?: string | null;
+    solde_dette: number;
+    created_at?: string;
+    updated_at?: string;
 }

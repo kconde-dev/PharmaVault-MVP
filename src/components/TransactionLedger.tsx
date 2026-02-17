@@ -5,7 +5,7 @@ import { formatSupabaseError } from '@/lib/supabaseError';
 import { useAuth } from '@/hooks/useAuth';
 import AppToast, { type ToastVariant } from '@/components/AppToast';
 
-type DbPaymentMethod = 'Espèces' | 'Orange Money (Code Marchand)';
+type DbPaymentMethod = 'cash' | 'orange_money';
 
 interface LedgerTransaction {
   id: string;
@@ -18,6 +18,25 @@ interface LedgerTransaction {
   cashier_name?: string | null;
   payment_method?: string | null;
   status?: string | null;
+  insurance_name?: string | null;
+  insurance_provider?: string | null;
+  insurance_reference?: string | null;
+  insurance_amount?: number | null;
+}
+
+function isMissingAssuranceCoreColumn(err: unknown): boolean {
+  const message = String(
+    (err as { message?: string } | null)?.message ||
+    (err as { details?: string } | null)?.details ||
+    ''
+  ).toLowerCase();
+  return (
+    message.includes('insurance_provider')
+    || message.includes('insurance_reference')
+    || message.includes('insurance_amount')
+    || message.includes('amount_paid')
+    || message.includes('total_amount')
+  );
 }
 
 function getTodayDateInputValue(): string {
@@ -72,9 +91,9 @@ export function TransactionLedger() {
       || value === 'mobile_money'
       || value === 'orange money'
     ) {
-      return 'Orange Money (Code Marchand)';
+      return 'orange_money';
     }
-    return 'Espèces';
+    return 'cash';
   };
 
   const getAdminName = (): string => {
@@ -93,12 +112,23 @@ export function TransactionLedger() {
     setError(null);
     try {
       const { start, end } = getDateBounds(selectedDate);
-      const { data, error: fetchError } = await supabase
+      let { data, error: fetchError } = await supabase
         .from('transactions')
-        .select('id, created_at, description, type, amount, shift_id, created_by, cashier_name, payment_method, status')
+        .select('id, created_at, description, type, amount, shift_id, created_by, cashier_name, payment_method, status, insurance_provider, insurance_name, insurance_reference, insurance_card_id, insurance_amount, amount_covered_by_insurance')
         .gte('created_at', start)
         .lte('created_at', end)
         .order('created_at', { ascending: false });
+
+      if (fetchError && isMissingAssuranceCoreColumn(fetchError)) {
+        const fallback = await supabase
+          .from('transactions')
+          .select('id, created_at, description, type, amount, shift_id, created_by, cashier_name, payment_method, status, insurance_name, insurance_card_id, amount_covered_by_insurance')
+          .gte('created_at', start)
+          .lte('created_at', end)
+          .order('created_at', { ascending: false });
+        data = fallback.data;
+        fetchError = fallback.error;
+      }
 
       if (fetchError) {
         const message = formatSupabaseError(fetchError, 'Erreur de chargement des transactions.');
@@ -192,9 +222,26 @@ export function TransactionLedger() {
         is_approved: true,
       };
 
-      const { error: createError } = await supabase
+      let { error: createError } = await supabase
         .from('transactions')
         .insert(reversalPayload);
+
+      if (createError) {
+        const reversalLegacyPayload = {
+          shift_id: returnTarget.shift_id,
+          amount: returnAmount,
+          description: `Remboursement: ${returnTarget.description || returnTarget.id}`,
+          type: 'retour',
+          payment_method: paymentMethod,
+          status: 'approved',
+          created_by: user.id,
+          is_approved: true,
+        };
+        const legacyRetry = await supabase
+          .from('transactions')
+          .insert(reversalLegacyPayload);
+        createError = legacyRetry.error;
+      }
 
       if (createError) {
         setError(formatSupabaseError(createError, 'Erreur lors de la création de la transaction de retour.'));
@@ -281,7 +328,16 @@ export function TransactionLedger() {
                 <tr key={tx.id} className="border-b border-slate-100 last:border-0">
                   <td className="py-3 pr-4 font-medium text-slate-700">{formatTime(tx.created_at)}</td>
                   <td className="py-3 pr-4 font-semibold text-slate-800">{tx.cashier_name || tx.created_by || '—'}</td>
-                  <td className="py-3 pr-4 font-semibold text-slate-900">{tx.description || '-'}</td>
+                  <td className="py-3 pr-4 font-semibold text-slate-900">
+                    <div className="flex items-center gap-2">
+                      <span>{tx.description || '-'}</span>
+                      {(Boolean(tx.insurance_provider || tx.insurance_name)) && (
+                        <span className="rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan-700">
+                          Assurance
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-3 pr-4 capitalize text-slate-600">{tx.type}</td>
                   <td className="py-3 text-right">
                     <span className={(tx.amount || 0) >= 0 ? 'font-black text-emerald-600' : 'font-black text-rose-600'}>

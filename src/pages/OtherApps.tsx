@@ -69,7 +69,12 @@ export function OtherApps() {
           </div>
           <p className="mt-3 text-sm leading-7 text-slate-200">
             PharmaVault Standard vous dit où part votre argent aujourd&apos;hui.
-            <span className="font-black text-amber-200"> PharmaVault Pro</span> vous donne le contrôle stratégique de demain.
+            <span className="font-black text-amber-200"> PharmaVault Pro</span> vous donne un pilotage temps réel de demain:
+            trésorerie, stock, assurance, crédits et performance opérationnelle.
+          </p>
+          <p className="mt-3 text-sm leading-7 text-slate-300">
+            C&apos;est un système complet de gestion officinale, version moderne: meilleur suivi de stock, meilleure
+            traçabilité financière et meilleure résilience technique qu&apos;un logiciel legacy classique.
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
@@ -90,7 +95,7 @@ export function OtherApps() {
                 Alertes SMS & IA
               </p>
               <p className="mt-1 text-xs leading-6 text-slate-300">
-                Le propriétaire reçoit des alertes proactives sur anomalies de stock et de trésorerie.
+                Le propriétaire reçoit des alertes proactives sur anomalies de stock, écarts de caisse et risques de rupture.
               </p>
             </article>
             <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
@@ -124,6 +129,10 @@ export function OtherApps() {
             <p className="mt-1 text-xs leading-6 text-slate-300">
               Migration Mode: nous ne supprimons pas votre ancien logiciel, nous mappons les anciennes tables SQL vers
               le schéma moderne PharmaVault pour une transition sans perte.
+            </p>
+            <p className="mt-1 text-xs leading-6 text-slate-300">
+              Résultat: continuité de service immédiate, reprise historique propre et exploitation des données existantes
+              sans ressaisie manuelle.
             </p>
           </div>
         </div>
@@ -279,8 +288,9 @@ export function OtherApps() {
               {activeModal === 'pro' && (
                 <>
                   <p><strong>Souveraineté:</strong> serveur privé local pour continuer à vendre même en cas de coupure internet.</p>
-                  <p><strong>Pilotage:</strong> alertes SMS & IA pour signaler les anomalies de stock et de trésorerie.</p>
-                  <p><strong>Transition:</strong> migration Zero-Effort depuis vos outils legacy.</p>
+                  <p><strong>Pilotage:</strong> alertes SMS & IA pour signaler les anomalies de stock, de trésorerie et de crédits clients.</p>
+                  <p><strong>Système complet:</strong> gestion moderne unifiée de la caisse, du stock, des assurances et des dettes.</p>
+                  <p><strong>Transition:</strong> migration Zero-Effort depuis vos outils legacy, sans interruption de service.</p>
                 </>
               )}
               {activeModal === 'google' && (

@@ -21,6 +21,7 @@ function fromModernPaymentMethod(method?: string): PaymentMethod {
 }
 
 type DbPaymentMethod = 'Espèces' | 'Orange Money (Code Marchand)' | 'crédit_dette';
+type CanonicalPaymentMethod = 'cash' | 'orange_money' | 'credit' | 'assurance';
 
 function getCashierName(raw: { email?: string | null; user_metadata?: Record<string, unknown> | null } | null): string {
   if (!raw) return 'Caissier';
@@ -49,6 +50,14 @@ function normalizePaymentMethodForDb(raw: string): DbPaymentMethod {
     return 'crédit_dette';
   }
   return 'Espèces';
+}
+
+function toCanonicalPaymentMethod(raw: string, isInsuranceSale: boolean, isCreditSale: boolean): CanonicalPaymentMethod {
+  if (isInsuranceSale) return 'assurance';
+  if (isCreditSale) return 'credit';
+  const normalized = normalizePaymentMethodForDb(raw);
+  if (normalized === 'Orange Money (Code Marchand)') return 'orange_money';
+  return 'cash';
 }
 
 function isCashMethod(method: string): boolean {
@@ -119,6 +128,13 @@ type ActiveShiftGuardian = {
   cashier_name: string;
 };
 
+type ClientSuggestion = {
+  id: string;
+  nom: string;
+  telephone: string | null;
+  solde_dette: number;
+};
+
 const ENABLE_ACTIVE_SHIFT_RPC = String(import.meta.env.VITE_ENABLE_ACTIVE_SHIFT_RPC || 'false').toLowerCase() === 'true';
 
 function normalizeTransaction(row: Record<string, unknown>): Transaction {
@@ -153,11 +169,33 @@ function normalizeTransaction(row: Record<string, unknown>): Transaction {
     id: String(row.id || ''),
     shift_id: String(row.shift_id || ''),
     amount: Number(row.amount || 0),
+    total_amount:
+      row.total_amount != null
+        ? Number(row.total_amount)
+        : row.amount != null
+          ? Number(row.amount)
+          : null,
+    amount_paid:
+      row.amount_paid != null
+        ? Number(row.amount_paid)
+        : row.amount != null && row.amount_covered_by_insurance != null
+          ? Number(row.amount) - Number(row.amount_covered_by_insurance)
+          : row.amount != null
+            ? Number(row.amount)
+            : null,
+    insurance_amount:
+      row.insurance_amount != null
+        ? Number(row.insurance_amount)
+        : row.amount_covered_by_insurance != null
+          ? Number(row.amount_covered_by_insurance)
+          : null,
     description: String(row.description || ''),
     type: type as Transaction['type'],
     method: method as Transaction['method'],
     status,
     insurance_name: ((row.insurance_name as string | null) ?? (row.insurance_provider as string | null)) ?? null,
+    insurance_provider: ((row.insurance_provider as string | null) ?? (row.insurance_name as string | null)) ?? null,
+    insurance_reference: ((row.insurance_reference as string | null) ?? (row.insurance_card_id as string | null)) ?? null,
     insurance_id: (row.insurance_id as string | null) ?? null,
     insurance_card_id: ((row.insurance_card_id as string | null) ?? (row.matricule_number as string | null)) ?? null,
     insurance_percentage:
@@ -185,6 +223,9 @@ function getInsuranceCoveredAmount(transaction: Transaction): number {
 }
 
 function getPatientCashPart(transaction: Transaction): number {
+  if (transaction.amount_paid != null && Number.isFinite(Number(transaction.amount_paid))) {
+    return Number(transaction.amount_paid);
+  }
   if (transaction.type !== 'recette') return transaction.amount;
   const covered = getInsuranceCoveredAmount(transaction);
   if (covered <= 0) return transaction.amount;
@@ -197,6 +238,12 @@ function isInsuranceTransaction(transaction: Transaction): boolean {
 
 function formatAmountGNF(value: number): string {
   return Number(value || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+}
+
+function sanitizeGnfAmountInput(raw: string): string {
+  const digitsOnly = raw.replace(/[^\d]/g, '');
+  if (!digitsOnly) return '';
+  return String(Number.parseInt(digitsOnly, 10));
 }
 
 function formatElapsed(startedAt: string): string {
@@ -335,9 +382,13 @@ export function Dashboard() {
   const [isFullscreen, setIsFullscreen] = useState(
     typeof document !== 'undefined' ? Boolean(document.fullscreenElement) : false
   );
+  const [flashPatientPart, setFlashPatientPart] = useState(false);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
   const terminalSectionRef = useRef<HTMLElement | null>(null);
+  const verifyConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
   const hasActiveShiftRpcRef = useRef<boolean | null>(null);
+  const hasClientsTableRef = useRef<boolean | null>(null);
+  const clientsLookupPendingRef = useRef(false);
 
   // Recette form state
   const [recetteForm, setRecetteForm] = useState({
@@ -350,6 +401,10 @@ export function Dashboard() {
     customerName: '',
     customerPhone: '',
   });
+  const [clientSuggestions, setClientSuggestions] = useState<ClientSuggestion[]>([]);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+  const [clientDebtHint, setClientDebtHint] = useState<number | null>(null);
+  const [clientsLookupDisabled, setClientsLookupDisabled] = useState(false);
 
   // Close shift form state
   const [closeShiftForm, setCloseShiftForm] = useState({
@@ -590,6 +645,14 @@ export function Dashboard() {
   }, [showTerminal, closedShiftSummary, currentShift, showVerificationModal, showPreCloseModal, showCloseShiftForm]);
 
   useEffect(() => {
+    if (!showVerificationModal) return;
+    const timer = window.setTimeout(() => {
+      verifyConfirmButtonRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [showVerificationModal]);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 2600);
     return () => window.clearTimeout(timer);
@@ -599,6 +662,64 @@ export function Dashboard() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(QUICK_AMOUNTS_STORAGE_KEY, JSON.stringify(quickAmounts));
   }, [quickAmounts]);
+
+  useEffect(() => {
+    const isCreditSale = isCreditMethod(String(recetteForm.method));
+    const search = recetteForm.customerName.trim();
+    if (!isCreditSale || search.length < 2 || hasClientsTableRef.current === false || clientsLookupDisabled) {
+      setClientSuggestions([]);
+      setShowClientSuggestions(false);
+      if (!search) setClientDebtHint(null);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      if (clientsLookupPendingRef.current) return;
+      clientsLookupPendingRef.current = true;
+      try {
+        const { data, error } = await supabase
+          .from('clients')
+          .select('id, nom, telephone, solde_dette')
+          .ilike('nom', `%${search}%`)
+          .order('nom', { ascending: true })
+          .limit(6);
+
+        if (!active) return;
+        if (error) {
+          hasClientsTableRef.current = false;
+          setClientsLookupDisabled(true);
+          setClientSuggestions([]);
+          setShowClientSuggestions(false);
+          return;
+        }
+
+        hasClientsTableRef.current = true;
+        const rows = ((data || []) as ClientSuggestion[]).map((row) => ({
+          ...row,
+          solde_dette: Number(row.solde_dette || 0),
+        }));
+        setClientSuggestions(rows);
+        setShowClientSuggestions(rows.length > 0);
+
+        const exact = rows.find((row) => row.nom.toLowerCase() === search.toLowerCase());
+        setClientDebtHint(exact ? Number(exact.solde_dette || 0) : null);
+      } catch {
+        if (!active) return;
+        hasClientsTableRef.current = false;
+        setClientsLookupDisabled(true);
+        setClientSuggestions([]);
+        setShowClientSuggestions(false);
+      } finally {
+        clientsLookupPendingRef.current = false;
+      }
+    }, 140);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [recetteForm.customerName, recetteForm.method]);
 
   const handleStartShift = async () => {
     setError(null);
@@ -685,6 +806,53 @@ export function Dashboard() {
     }
   };
 
+  const upsertClientDebt = useCallback(async (name: string, phone: string, debtDelta: number) => {
+    if (!name.trim() || debtDelta <= 0) return;
+    if (hasClientsTableRef.current === false) return;
+
+    try {
+      const { data: existing, error: findError } = await supabase
+        .from('clients')
+        .select('id, nom, telephone, solde_dette')
+        .eq('nom', name.trim())
+        .maybeSingle();
+
+      if (findError) {
+        hasClientsTableRef.current = false;
+        return;
+      }
+
+      hasClientsTableRef.current = true;
+      const existingDebt = Number(existing?.solde_dette || 0);
+      const nextDebt = Math.max(0, existingDebt + debtDelta);
+      const nextPhone = phone.trim() || existing?.telephone || null;
+      const payload = {
+        nom: name.trim(),
+        telephone: nextPhone,
+        solde_dette: nextDebt,
+        updated_at: new Date().toISOString(),
+      };
+      const { error: upsertError } = await supabase
+        .from('clients')
+        .upsert(payload, { onConflict: 'nom' });
+      if (upsertError) {
+        hasClientsTableRef.current = false;
+      }
+    } catch {
+      hasClientsTableRef.current = false;
+    }
+  }, []);
+
+  const handleSelectClientSuggestion = useCallback((client: ClientSuggestion) => {
+    setRecetteForm((prev) => ({
+      ...prev,
+      customerName: client.nom,
+      customerPhone: prev.customerPhone.trim() ? prev.customerPhone : (client.telephone || ''),
+    }));
+    setClientDebtHint(Number(client.solde_dette || 0));
+    setShowClientSuggestions(false);
+  }, []);
+
   const saveRecette = async () => {
     setError(null);
     setIsSubmittingRecette(true);
@@ -706,7 +874,7 @@ export function Dashboard() {
       return;
     }
 
-    if (!recetteForm.amount || isNaN(parseFloat(recetteForm.amount))) {
+    if (!recetteForm.amount || isNaN(Number.parseInt(recetteForm.amount, 10))) {
       setError('Montant invalide.');
       setIsSubmittingRecette(false);
       return;
@@ -726,75 +894,158 @@ export function Dashboard() {
       return;
     }
 
-    const totalAmount = parseFloat(recetteForm.amount);
+    const totalAmount = Number.parseInt(recetteForm.amount, 10);
     const isCreditSale = isCreditMethod(String(recetteForm.method));
-    if (isCreditSale && !recetteForm.customerName.trim()) {
-      setError('Le nom du client est obligatoire pour une vente à crédit.');
-      setIsSubmittingRecette(false);
-      return;
-    }
+    const customerName = recetteForm.customerName.trim() || 'Client Comptant';
     const isInsuranceSale = !isCreditSale && recetteForm.isInsuranceSale;
+    const insuranceReference = recetteForm.matricule.trim() || 'N/A';
     const coverageRate = isInsuranceSale ? Number(recetteForm.coverageRate || 0) : 0;
     const insurancePart = isInsuranceSale ? Number((totalAmount * (coverageRate / 100)).toFixed(2)) : 0;
     const patientPart = isInsuranceSale ? Math.max(0, Number((totalAmount - insurancePart).toFixed(2))) : totalAmount;
-    const paymentMethod: DbPaymentMethod = normalizePaymentMethodForDb(String(recetteForm.method || 'Espèces'));
+    const canonicalMethod: CanonicalPaymentMethod = toCanonicalPaymentMethod(
+      String(recetteForm.method || 'Espèces'),
+      isInsuranceSale,
+      isCreditSale
+    );
     const cashierName = getCashierName({
       email: writer.email,
       user_metadata: writer.user_metadata as Record<string, unknown> | null,
     });
+    const modernType = isCreditSale ? 'Crédit' : 'recette';
+    const legacyTypePreferred = isCreditSale ? 'Crédit' : 'recette';
+
+    const transactionDescription = isCreditSale
+      ? `Crédit Client - ${customerName}${recetteForm.customerPhone ? ` | Tel: ${recetteForm.customerPhone}` : ''}`
+      : isInsuranceSale
+      ? `Recette Assurance - ${recetteForm.insurerName} | Matricule: ${insuranceReference} | Part Patient: ${formatAmountGNF(patientPart)} | Part Assurance: ${formatAmountGNF(insurancePart)}`
+      : 'Recette';
 
     const payloadBase = {
       shift_id: currentShift.id,
       amount: totalAmount,
-      description: isCreditSale
-        ? `Crédit Client - ${recetteForm.customerName}${recetteForm.customerPhone ? ` | Tel: ${recetteForm.customerPhone}` : ''}`
-        : isInsuranceSale
-        ? `Recette Assurance - ${recetteForm.insurerName} | Matricule: ${recetteForm.matricule} | Part Patient: ${formatAmountGNF(patientPart)} | Part Assurance: ${formatAmountGNF(insurancePart)}`
-        : 'Recette',
-      type: isCreditSale ? 'Crédit' : 'Recette',
+      total_amount: totalAmount,
+      amount_paid: patientPart,
+      insurance_amount: isInsuranceSale ? insurancePart : 0,
+      description: transactionDescription,
+      type: modernType,
       category: isCreditSale ? 'Crédit Client' : 'Vente',
-      payment_method: paymentMethod,
+      payment_method: canonicalMethod,
       status: 'approved',
       payment_status: isCreditSale ? 'Dette Totale' : null,
+      insurance_provider: isInsuranceSale ? recetteForm.insurerName : null,
+      insurance_reference: isInsuranceSale ? insuranceReference : null,
       insurance_name: isInsuranceSale ? recetteForm.insurerName : null,
-      insurance_card_id: isInsuranceSale ? recetteForm.matricule : null,
+      insurance_card_id: isInsuranceSale ? insuranceReference : null,
       insurance_percentage: isInsuranceSale ? coverageRate : null,
       amount_covered_by_insurance: isInsuranceSale ? insurancePart : null,
-      customer_name: isCreditSale ? recetteForm.customerName : null,
+      customer_name: isCreditSale ? customerName : null,
       customer_phone: isCreditSale ? recetteForm.customerPhone || null : null,
       created_by: writer.id,
       cashier_name: cashierName,
       is_approved: true,
     };
 
-    // Primary write path, then minimal schema fallback.
-    let { error: insertError } = await supabase.from('transactions').insert(payloadBase);
+    const payloadLegacyCompatible = {
+      shift_id: currentShift.id,
+      amount: totalAmount,
+      description: isCreditSale
+        ? `Crédit Client - ${customerName}${recetteForm.customerPhone ? ` | Tel: ${recetteForm.customerPhone}` : ''}`
+        : isInsuranceSale
+        ? `Recette Assurance - ${recetteForm.insurerName} | Matricule: ${insuranceReference}`
+        : 'Recette',
+      type: legacyTypePreferred,
+      category: isCreditSale ? 'Crédit Client' : 'Vente',
+      payment_method: canonicalMethod,
+      status: 'approved',
+      payment_status: isCreditSale ? 'Dette Totale' : null,
+      insurance_name: isInsuranceSale ? recetteForm.insurerName : null,
+      insurance_card_id: isInsuranceSale ? insuranceReference : null,
+      coverage_percent: isInsuranceSale ? coverageRate : null,
+      amount_covered_by_insurance: isInsuranceSale ? insurancePart : null,
+      customer_name: isCreditSale ? customerName : null,
+      customer_phone: isCreditSale ? recetteForm.customerPhone || null : null,
+      created_by: writer.id,
+      is_approved: true,
+    };
 
-    if (insertError) {
-      const payloadMinimal = {
-        shift_id: currentShift.id,
-        amount: totalAmount,
-        description: isCreditSale
-          ? `Crédit Client - ${recetteForm.customerName}${recetteForm.customerPhone ? ` | Tel: ${recetteForm.customerPhone}` : ''}`
-          : isInsuranceSale
-          ? `Recette Assurance - ${recetteForm.insurerName} | Matricule: ${recetteForm.matricule}`
-          : 'Recette',
-        type: isCreditSale ? 'Crédit' : 'Recette',
-        category: isCreditSale ? 'Crédit Client' : 'Vente',
-        payment_method: paymentMethod,
-        status: 'approved',
-        payment_status: isCreditSale ? 'Dette Totale' : null,
-        insurance_name: isInsuranceSale ? recetteForm.insurerName : null,
-        insurance_card_id: isInsuranceSale ? recetteForm.matricule : null,
-        insurance_percentage: isInsuranceSale ? coverageRate : null,
-        amount_covered_by_insurance: isInsuranceSale ? insurancePart : null,
-        customer_name: isCreditSale ? recetteForm.customerName : null,
-        customer_phone: isCreditSale ? recetteForm.customerPhone || null : null,
-        created_by: writer.id,
-        is_approved: true,
-      };
-      const retryMinimal = await supabase.from('transactions').insert(payloadMinimal);
-      insertError = retryMinimal.error;
+    const payloadLegacyMinimal = {
+      shift_id: currentShift.id,
+      amount: totalAmount,
+      description: transactionDescription,
+      type: 'recette',
+      payment_method: canonicalMethod,
+      status: 'approved',
+      created_by: writer.id,
+      is_approved: true,
+    };
+
+    const payloadLegacyMinimalEnglish = {
+      shift_id: currentShift.id,
+      amount: totalAmount,
+      description: transactionDescription,
+      type: 'recette',
+      payment_method: canonicalMethod,
+      status: 'approved',
+      created_by: writer.id,
+      is_approved: true,
+    };
+
+    const payloadEnglishPaymentMethod = {
+      shift_id: currentShift.id,
+      amount: totalAmount,
+      description: transactionDescription,
+      type: 'income',
+      payment_method: canonicalMethod,
+      status: 'approved',
+      created_by: writer.id,
+      is_approved: true,
+    };
+
+    const payloadBareEnglish = {
+      shift_id: currentShift.id,
+      amount: totalAmount,
+      description: transactionDescription,
+      type: 'income',
+      payment_method: canonicalMethod,
+      created_by: writer.id,
+    };
+
+    const payloadBareFrench = {
+      shift_id: currentShift.id,
+      amount: totalAmount,
+      description: transactionDescription,
+      type: 'recette',
+      payment_method: canonicalMethod,
+      created_by: writer.id,
+    };
+
+    const payloadAttempts: Array<Record<string, unknown>> = [
+      payloadBase,
+      payloadLegacyCompatible,
+      payloadLegacyMinimal,
+      payloadLegacyMinimalEnglish,
+      payloadEnglishPaymentMethod,
+      payloadBareEnglish,
+      payloadBareFrench,
+    ];
+
+    let insertError: unknown = null;
+    for (const payload of payloadAttempts) {
+      const { error: attemptError } = await supabase.from('transactions').insert(payload);
+      if (!attemptError) {
+        insertError = null;
+        break;
+      }
+      insertError = attemptError;
+      console.error('Transaction insert attempt failed', attemptError, payload);
+      const message = String(
+        (attemptError as { message?: string } | null)?.message ||
+        (attemptError as { details?: string } | null)?.details ||
+        ''
+      ).toLowerCase();
+      if (!message.includes('column') && !message.includes('schema cache') && !message.includes('invalid input value for enum')) {
+        // Continue anyway; final error surfaced after all compatibility attempts.
+      }
     }
 
     if (insertError) {
@@ -820,6 +1071,10 @@ export function Dashboard() {
       return;
     }
 
+    if (isCreditSale) {
+      await upsertClientDebt(customerName, recetteForm.customerPhone || '', totalAmount);
+    }
+
     // Reset and refresh
     setRecetteForm({
       amount: '',
@@ -832,6 +1087,9 @@ export function Dashboard() {
       customerPhone: '',
     });
     setReceivedAmount('');
+    setClientSuggestions([]);
+    setShowClientSuggestions(false);
+    setClientDebtHint(null);
     setShowVerificationModal(false);
     await refreshTransactions();
     setIsSubmittingRecette(false);
@@ -847,16 +1105,12 @@ export function Dashboard() {
 
   const openVerificationModal = useCallback(() => {
     setError(null);
-    const amount = parseFloat(recetteForm.amount);
+    const amount = Number.parseInt(recetteForm.amount, 10);
     if (!recetteForm.amount || Number.isNaN(amount) || amount <= 0) {
       setError('Montant invalide.');
       return false;
     }
     if (isCreditMethod(String(recetteForm.method))) {
-      if (!recetteForm.customerName.trim()) {
-        setError('Le nom du client est obligatoire pour une vente à crédit.');
-        return false;
-      }
       setReceivedAmount('');
       setShowVerificationModal(true);
       return true;
@@ -864,10 +1118,6 @@ export function Dashboard() {
     if (recetteForm.isInsuranceSale) {
       if (!recetteForm.insurerName.trim()) {
         setError('Veuillez sélectionner un assureur.');
-        return false;
-      }
-      if (!recetteForm.matricule.trim()) {
-        setError('Veuillez renseigner le Numéro Matricule / Bon.');
         return false;
       }
       const coverageRate = Number(recetteForm.coverageRate);
@@ -905,6 +1155,15 @@ export function Dashboard() {
 
   const handleApplyQuickAmount = (amount: number) => {
     setRecetteForm((prev) => ({ ...prev, amount: String(amount) }));
+    window.requestAnimationFrame(() => amountInputRef.current?.focus());
+  };
+
+  const handleAddAmountDelta = (delta: number) => {
+    setRecetteForm((prev) => {
+      const current = Number.parseInt(String(prev.amount || '0'), 10);
+      const safeCurrent = Number.isFinite(current) ? current : 0;
+      return { ...prev, amount: String(Math.max(0, safeCurrent + delta)) };
+    });
     window.requestAnimationFrame(() => amountInputRef.current?.focus());
   };
 
@@ -1151,7 +1410,7 @@ export function Dashboard() {
     email: user?.email ?? null,
     user_metadata: (user?.user_metadata as Record<string, unknown> | null) ?? null,
   });
-  const amountValue = Number.parseFloat(recetteForm.amount || '0');
+  const amountValue = Number.parseInt(recetteForm.amount || '0', 10);
   const isCreditSale = isCreditMethod(String(recetteForm.method));
   const insuranceCoverageRate = Number(recetteForm.coverageRate || 0);
   const insurancePart = recetteForm.isInsuranceSale && !isCreditSale ? Number((amountValue * (insuranceCoverageRate / 100)).toFixed(2)) : 0;
@@ -1182,6 +1441,7 @@ export function Dashboard() {
       .reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
   );
   const insurerOptions = ['CNAMGS', 'NSIA', 'LANALA', 'SAHAM', 'Activa', 'Autre'];
+  const coverageRateOptions = [70, 80, 90, 100];
   const isTerminalMode = (showTerminal || forcedTerminalView || isTerminalQueryView) && !closedShiftSummary;
   const isCashierFocusedTerminal = isCashier && isTerminalMode;
   const startOfToday = new Date();
@@ -1197,6 +1457,13 @@ export function Dashboard() {
   const hasAnotherActiveGuard = Boolean(globalActiveShift && (!currentShift || globalActiveShift.shift_id !== currentShift.id));
   const activeGuardCashierName = globalActiveShift?.cashier_name || 'Caissier';
   const canStartShift = !isStarting && !currentShift && !hasAnotherActiveGuard;
+
+  useEffect(() => {
+    if (!recetteForm.isInsuranceSale || isCreditSale) return;
+    setFlashPatientPart(true);
+    const timer = window.setTimeout(() => setFlashPatientPart(false), 420);
+    return () => window.clearTimeout(timer);
+  }, [recetteForm.coverageRate, recetteForm.amount, recetteForm.isInsuranceSale, isCreditSale]);
 
   useEffect(() => {
     if (!isTerminalMode || !currentShift || showPreCloseModal || showCloseShiftForm) return;
@@ -1233,6 +1500,24 @@ export function Dashboard() {
       if (event.ctrlKey && event.key === 'Enter' && !showVerificationModal) {
         event.preventDefault();
         openVerificationModal();
+        return;
+      }
+
+      if (event.key === 'Escape' && !showVerificationModal) {
+        event.preventDefault();
+        setRecetteForm((prev) => ({
+          ...prev,
+          amount: '',
+          customerName: '',
+          customerPhone: '',
+          matricule: '',
+          isInsuranceSale: false,
+        }));
+        setReceivedAmount('');
+        setClientSuggestions([]);
+        setShowClientSuggestions(false);
+        setClientDebtHint(null);
+        window.requestAnimationFrame(() => amountInputRef.current?.focus());
         return;
       }
 
@@ -1687,15 +1972,33 @@ export function Dashboard() {
                       <Input
                         ref={amountInputRef}
                         type="number"
-                        inputMode="decimal"
-                        step="0.01"
+                        inputMode="numeric"
+                        step="500"
                         min="0"
                         required
                         placeholder="0"
                         value={recetteForm.amount}
-                        onChange={(e) => setRecetteForm((prev) => ({ ...prev, amount: e.target.value }))}
+                        onChange={(e) => setRecetteForm((prev) => ({ ...prev, amount: sanitizeGnfAmountInput(e.target.value) }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            openVerificationModal();
+                          }
+                        }}
                         className="h-24 w-full rounded-3xl border-2 border-emerald-300/70 bg-white/95 text-center text-4xl font-black text-slate-900 shadow-2xl placeholder:text-slate-300 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/40 md:h-28 md:text-6xl"
                       />
+                      <div className="flex w-full max-w-xl flex-wrap items-center justify-center gap-2">
+                        {[1000, 5000, 10000, 20000].map((delta) => (
+                          <button
+                            key={delta}
+                            type="button"
+                            onClick={() => handleAddAmountDelta(delta)}
+                            className="rounded-xl border border-emerald-300/50 bg-emerald-500/15 px-3 py-2 text-xs font-black uppercase tracking-wider text-emerald-100 hover:bg-emerald-500/30"
+                          >
+                            +{(delta / 1000).toLocaleString('fr-FR')}k
+                          </button>
+                        ))}
+                      </div>
                       <div className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-900/60 p-3">
                         <div className="flex flex-wrap items-center gap-2">
                           {quickAmounts.map((quickAmount, index) => (
@@ -1780,11 +2083,48 @@ export function Dashboard() {
                               <Input
                                 type="text"
                                 required
+                                autoComplete="off"
                                 value={recetteForm.customerName}
-                                onChange={(e) => setRecetteForm((prev) => ({ ...prev, customerName: e.target.value }))}
-                                placeholder="Ex: Mamadou Diallo"
-                                className="h-11 rounded-xl border-amber-300/30 bg-slate-900 text-sm font-semibold text-white placeholder:text-slate-500"
+                                onChange={(e) => {
+                                  setRecetteForm((prev) => ({ ...prev, customerName: e.target.value }));
+                                  setShowClientSuggestions(true);
+                                }}
+                                onBlur={() => {
+                                  window.setTimeout(() => setShowClientSuggestions(false), 120);
+                                }}
+                                onFocus={() => {
+                                  if (clientSuggestions.length > 0) {
+                                    setShowClientSuggestions(true);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    openVerificationModal();
+                                  }
+                                }}
+                                placeholder="Nom complet du débiteur"
+                                className="h-11 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400 focus-visible:!border-emerald-600 focus-visible:!ring-emerald-600/30"
                               />
+                              {showClientSuggestions && clientSuggestions.length > 0 && (
+                                <div className="relative z-20 mt-1 max-h-44 overflow-auto rounded-xl border border-slate-300 bg-white shadow-xl">
+                                  {clientSuggestions.map((client) => (
+                                    <button
+                                      key={client.id}
+                                      type="button"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => handleSelectClientSuggestion(client)}
+                                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-100"
+                                    >
+                                      <span className="font-semibold text-slate-900">{client.nom}</span>
+                                      <span className="text-xs font-bold text-slate-500">
+                                        Dette: {formatAmountGNF(Number(client.solde_dette || 0))} GNF
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                             </label>
                             <label className="text-left">
                               <span className="mb-1 block text-xs font-black uppercase tracking-wider text-amber-100">Téléphone</span>
@@ -1793,11 +2133,23 @@ export function Dashboard() {
                                 inputMode="tel"
                                 value={recetteForm.customerPhone}
                                 onChange={(e) => setRecetteForm((prev) => ({ ...prev, customerPhone: e.target.value }))}
-                                placeholder="Ex: +2246..."
-                                className="h-11 rounded-xl border-amber-300/30 bg-slate-900 text-sm font-semibold text-white placeholder:text-slate-500"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    openVerificationModal();
+                                  }
+                                }}
+                                placeholder="N° de téléphone (6xx xx xx xx)"
+                                className="h-11 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400 focus-visible:!border-emerald-600 focus-visible:!ring-emerald-600/30"
                               />
                             </label>
                           </div>
+                          {clientDebtHint != null && clientDebtHint > 0 && (
+                            <p className="mt-2 text-xs font-black text-amber-100">
+                              Solde actuel: {formatAmountGNF(clientDebtHint)} GNF
+                            </p>
+                          )}
                           <p className="mt-2 text-xs font-semibold text-amber-100/90">
                             Vente enregistrée en dette client jusqu&apos;à encaissement.
                           </p>
@@ -1815,9 +2167,9 @@ export function Dashboard() {
                         </div>
                       </div>
                       {!isCreditSale && (
-                        <div className="w-full max-w-xl rounded-2xl border-2 border-cyan-300/40 bg-cyan-950/35 p-4 shadow-lg shadow-cyan-500/10">
+                        <div className="w-full max-w-xl rounded-2xl border-2 border-cyan-300/60 !bg-white p-4 shadow-lg shadow-cyan-500/10">
                         <div className="mb-3 flex items-center justify-between">
-                          <p className="text-sm font-black uppercase tracking-[0.2em] text-cyan-100">Mode Assurance</p>
+                          <p className="text-sm font-black uppercase tracking-[0.2em] text-cyan-800">Mode Assurance</p>
                           <button
                             type="button"
                             onClick={() => setRecetteForm((prev) => ({
@@ -1826,65 +2178,78 @@ export function Dashboard() {
                             }))}
                             className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition ${
                               recetteForm.isInsuranceSale
-                                ? 'bg-cyan-300 text-slate-950'
-                                : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                                ? 'bg-cyan-600 text-white'
+                                : 'bg-white text-slate-900 border border-slate-300 hover:bg-slate-100'
                             }`}
                           >
                             {recetteForm.isInsuranceSale ? 'Activé' : 'Désactivé'}
                           </button>
                         </div>
-                        <p className="mb-3 text-xs font-semibold text-cyan-100/90">
+                        <p className="mb-3 text-xs font-semibold text-slate-700">
                           Activez ce mode pour split automatique Patient / Assurance sans calcul manuel.
                         </p>
                         {recetteForm.isInsuranceSale && (
-                          <div className="grid gap-3 md:grid-cols-3">
-                            <label className="text-left">
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-200">Assureur</span>
-                              <select
-                                value={recetteForm.insurerName}
-                                onChange={(e) => setRecetteForm((prev) => ({ ...prev, insurerName: e.target.value }))}
-                                className="h-11 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 text-sm font-semibold text-white outline-none focus:border-cyan-300"
-                              >
+                          <div className="space-y-3">
+                            <div>
+                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-800">Assureur</span>
+                              <div className="flex flex-wrap gap-2">
                                 {insurerOptions.map((insurer) => (
-                                  <option key={insurer} value={insurer}>{insurer}</option>
+                                  <button
+                                    key={insurer}
+                                    type="button"
+                                    onClick={() => setRecetteForm((prev) => ({ ...prev, insurerName: insurer }))}
+                                    className={`rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-wider ${
+                                      recetteForm.insurerName === insurer
+                                        ? 'border-cyan-700 bg-cyan-600 text-white'
+                                        : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {insurer}
+                                  </button>
                                 ))}
-                              </select>
-                            </label>
+                              </div>
+                            </div>
+                            <div>
+                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-800">Taux Prise en Charge</span>
+                              <div className="flex flex-wrap gap-2">
+                                {coverageRateOptions.map((rate) => (
+                                  <button
+                                    key={rate}
+                                    type="button"
+                                    onClick={() => setRecetteForm((prev) => ({ ...prev, coverageRate: rate }))}
+                                    className={`rounded-xl border px-4 py-2 text-xs font-black uppercase tracking-wider ${
+                                      recetteForm.coverageRate === rate
+                                        ? 'border-emerald-700 bg-emerald-600 text-white'
+                                        : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {rate}%
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                             <label className="text-left">
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-200">Taux Prise en Charge</span>
-                              <select
-                                value={String(recetteForm.coverageRate)}
-                                onChange={(e) => setRecetteForm((prev) => ({ ...prev, coverageRate: Number(e.target.value) }))}
-                                className="h-11 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 text-sm font-semibold text-white outline-none focus:border-cyan-300"
-                              >
-                                <option value="70">70%</option>
-                                <option value="80">80%</option>
-                                <option value="90">90%</option>
-                                <option value="100">100%</option>
-                              </select>
-                            </label>
-                            <label className="text-left">
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-200">N° de Bon</span>
+                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-800">N° de Bon</span>
                               <Input
                                 type="text"
                                 value={recetteForm.matricule}
                                 onChange={(e) => setRecetteForm((prev) => ({ ...prev, matricule: e.target.value }))}
                                 placeholder="Ex: CN-84593"
-                                className="h-11 rounded-xl border-slate-600 bg-slate-900 text-sm font-semibold text-white placeholder:text-slate-500"
+                                className="h-11 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400 focus-visible:!border-cyan-600 focus-visible:!ring-cyan-600/40"
                               />
                             </label>
                           </div>
                         )}
                         {recetteForm.isInsuranceSale && (
                           <div className="mt-3 grid gap-2 text-sm font-bold md:grid-cols-3">
-                            <p className="rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-slate-100">
-                              Total: <span className="text-white">{formatAmountGNF(amountValue)} GNF</span>
+                            <p className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900">
+                              Total: <span className="text-black">{formatAmountGNF(amountValue)} GNF</span>
                             </p>
-                            <p className="rounded-xl border border-emerald-400/40 bg-emerald-900/20 px-3 py-2 text-emerald-200">
-                              Part Patient: <span className="text-emerald-100">{formatAmountGNF(patientPart)} GNF</span>
+                            <p className={`rounded-xl border px-3 py-2 ${flashPatientPart ? 'border-emerald-700 bg-emerald-200 text-emerald-900' : 'border-emerald-300 bg-emerald-50 text-emerald-800'}`}>
+                              Part Patient: <span className="text-emerald-900">{formatAmountGNF(patientPart)} GNF</span>
                             </p>
-                            <p className="rounded-xl border border-cyan-400/40 bg-cyan-900/20 px-3 py-2 text-cyan-200">
-                              Part Assurance: <span className="text-cyan-100">{formatAmountGNF(insurancePart)} GNF</span>
+                            <p className="rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2 text-cyan-800">
+                              Part Assurance: <span className="text-cyan-900">{formatAmountGNF(insurancePart)} GNF</span>
                             </p>
                           </div>
                         )}
@@ -1931,13 +2296,21 @@ export function Dashboard() {
                       ) : (
                         recentEntries.map((tx) => {
                           const statusLabel = tx.type === 'retour' ? 'Retourné' : 'Validé';
+                          const isInsurance = isInsuranceTransaction(tx);
                           return (
                             <div key={tx.id} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
                               <div className="flex items-center justify-between gap-3">
                                 <p className="text-sm font-bold text-white">{formatAmountGNF(tx.amount)} GNF</p>
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${statusLabel === 'Retourné' ? 'text-amber-300' : 'text-emerald-300'}`}>
-                                  {statusLabel}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  {isInsurance && (
+                                    <span className="rounded-md border border-cyan-300/40 bg-cyan-900/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan-200">
+                                      Assurance
+                                    </span>
+                                  )}
+                                  <span className={`text-[10px] font-black uppercase tracking-widest ${statusLabel === 'Retourné' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                                    {statusLabel}
+                                  </span>
+                                </div>
                               </div>
                               <p className="mt-1 text-xs text-slate-400">{new Date(tx.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
                             </div>
@@ -1986,11 +2359,13 @@ export function Dashboard() {
                       if (isSubmittingRecette) return;
                       if (event.key === 'Escape') {
                         event.preventDefault();
+                        event.stopPropagation();
                         setShowVerificationModal(false);
                         window.requestAnimationFrame(() => amountInputRef.current?.focus());
                       }
                       if (event.key === 'Enter') {
                         event.preventDefault();
+                        event.stopPropagation();
                         void handleConfirmRecette();
                       }
                     }}
@@ -2053,11 +2428,13 @@ export function Dashboard() {
 
                       <div className="mt-8 grid gap-3 md:grid-cols-2">
                         <Button
+                          ref={verifyConfirmButtonRef}
                           type="button"
                           onClick={handleConfirmRecette}
                           isLoading={isSubmittingRecette}
                           disabled={!isOnline || isSubmittingRecette}
-                          className="h-16 rounded-2xl bg-emerald-500 text-lg font-black text-slate-950 hover:bg-emerald-400"
+                          autoFocus
+                          className="h-16 rounded-2xl bg-emerald-500 text-lg font-black text-slate-950 hover:bg-emerald-400 focus-visible:animate-pulse focus-visible:ring-4 focus-visible:ring-emerald-300 focus-visible:ring-offset-2"
                         >
                           <Check className="mr-2 h-5 w-5" />
                           {isCreditSale ? 'CONFIRMER (Dette)' : 'CONFIRMER (Entrée)'}
