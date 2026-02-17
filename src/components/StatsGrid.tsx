@@ -15,6 +15,8 @@ type TxType = 'income' | 'expense' | 'recette' | 'dépense' | 'crédit' | 'credi
 
 interface TxRow {
   amount: number;
+  amount_paid?: number | null;
+  insurance_amount?: number | null;
   type: TxType;
   created_at: string;
   payment_method?: string | null;
@@ -115,13 +117,13 @@ export function StatsGrid() {
       const [seriesResult, totalsResult] = await Promise.allSettled([
         supabase
           .from('transactions')
-          .select('amount, type, created_at, status')
+          .select('amount, amount_paid, insurance_amount, type, created_at, status')
           .gte('created_at', start.toISOString())
           .lte('created_at', today.toISOString())
           .order('created_at', { ascending: true }),
         supabase
           .from('transactions')
-          .select('amount, type, payment_method, payment_status, status'),
+          .select('amount, amount_paid, insurance_amount, type, payment_method, payment_status, status'),
       ]);
 
       if (!mounted) return;
@@ -144,7 +146,12 @@ export function StatsGrid() {
           if (!isIncome(row.type)) return sum;
           if (!isApprovedStatus(row.status)) return sum;
           if (!isCashOrOrangeMethod(row.payment_method)) return sum;
-          return sum + (Number(row.amount) || 0);
+          return sum + (Number(row.amount_paid ?? row.amount) || 0);
+        }, 0);
+        const totalInsurance = totalsRows.reduce((sum, row) => {
+          if (!isIncome(row.type)) return sum;
+          if (!isApprovedStatus(row.status)) return sum;
+          return sum + (Number(row.insurance_amount || 0) || 0);
         }, 0);
         const totalExpenses = totalsRows.reduce((sum, row) => {
           if (!isExpense(row.type)) return sum;
@@ -157,7 +164,7 @@ export function StatsGrid() {
           if (String(row.payment_status || '') !== 'Dette Totale') return sum;
           return sum + (Number(row.amount) || 0);
         }, 0);
-        setGlobalSummary({ totalReceipts, totalExpenses, totalDebts });
+        setGlobalSummary({ totalReceipts: totalReceipts + totalInsurance, totalExpenses, totalDebts });
       }
 
       const points = new Map<string, DailyPoint>();
@@ -182,7 +189,7 @@ export function StatsGrid() {
         if (!point) return;
 
         if (isIncome(row.type)) {
-          point.in += Number(row.amount) || 0;
+          point.in += (Number(row.amount_paid ?? row.amount) || 0) + (Number(row.insurance_amount || 0) || 0);
         } else {
           point.out += Number(row.amount) || 0;
         }
@@ -193,10 +200,15 @@ export function StatsGrid() {
       setIsLoading(false);
     };
 
+    const onTransactionsUpdated = () => {
+      void load();
+    };
     load();
+    window.addEventListener('transactions-updated', onTransactionsUpdated);
 
     return () => {
       mounted = false;
+      window.removeEventListener('transactions-updated', onTransactionsUpdated);
     };
   }, [authLoading, isAdmin]);
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useConnection } from '@/context/ConnectionContext';
-import { Play, X, Share2, CheckCircle, AlertTriangle, History, Check, RotateCcw, Maximize2, Minimize2, CircleHelp } from 'lucide-react';
+import { Play, X, CheckCircle, AlertTriangle, Check, RotateCcw, Maximize2, Minimize2, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AppToast, { type ToastVariant } from '@/components/AppToast';
@@ -8,14 +8,13 @@ import StatsGrid from '@/components/StatsGrid';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { generateWhatsAppMessage, shareViaWhatsApp } from '@/lib/whatsapp';
-import { downloadShiftReceiptPDF } from '@/lib/pdf';
 import type { Shift, Transaction, PaymentMethod } from '@/lib/database.types';
 import { formatSupabaseError } from '@/lib/supabaseError';
 
 function fromModernPaymentMethod(method?: string): PaymentMethod {
   if (method === 'cash') return 'Espèces';
-  if (method === 'mobile_money') return 'Orange Money (Code Marchand)';
+  if (method === 'mobile_money' || method === 'orange_money') return 'Orange Money (Code Marchand)';
+  if (method === 'credit' || method === 'crédit_dette') return 'Crédit / Dette';
   if (method === 'card') return 'Espèces';
   return 'Espèces';
 }
@@ -46,7 +45,14 @@ function normalizePaymentMethodForDb(raw: string): DbPaymentMethod {
   ) {
     return 'Orange Money (Code Marchand)';
   }
-  if (value === 'crédit / dette' || value === 'credit / dette' || value === 'crédit_dette' || value === 'credit_debt') {
+  if (
+    value === 'crédit / dette'
+    || value === 'credit / dette'
+    || value === 'crédit_dette'
+    || value === 'credit_debt'
+    || value === 'credit'
+    || value === 'crédit'
+  ) {
     return 'crédit_dette';
   }
   return 'Espèces';
@@ -105,6 +111,15 @@ function isMissingShiftBalanceColumnsError(err: unknown): boolean {
   return message.includes('opening_balance') || message.includes('closing_balance');
 }
 
+function isMissingShiftCloseReasonColumnError(err: unknown): boolean {
+  const message = String(
+    (err as { message?: string } | null)?.message ||
+    (err as { details?: string } | null)?.details ||
+    ''
+  ).toLowerCase();
+  return message.includes('closed_reason');
+}
+
 function isSingleActiveShiftConflict(err: unknown): boolean {
   const code = String((err as { code?: string } | null)?.code || '');
   const message = String(
@@ -152,7 +167,12 @@ function normalizeTransaction(row: Record<string, unknown>): Transaction {
   const method = row.method
     ? String(row.method)
     : typeof row.payment_method === 'string'
-      ? (String(row.payment_method).toLowerCase() === 'crédit_dette' ? 'Crédit / Dette' : fromModernPaymentMethod(row.payment_method))
+      ? (
+        String(row.payment_method).toLowerCase() === 'crédit_dette'
+          || String(row.payment_method).toLowerCase() === 'credit'
+          ? 'Crédit / Dette'
+          : fromModernPaymentMethod(row.payment_method)
+      )
       : fromModernPaymentMethod(undefined);
   const normalizeStatus = (raw: unknown, approvedFlag: unknown, txType: string): 'pending' | 'approved' | 'rejected' => {
     const rawStatus = String(raw || '').toLowerCase();
@@ -219,6 +239,9 @@ function normalizeTransaction(row: Record<string, unknown>): Transaction {
 }
 
 function getInsuranceCoveredAmount(transaction: Transaction): number {
+  if (transaction.insurance_amount != null && Number.isFinite(Number(transaction.insurance_amount))) {
+    return Number(transaction.insurance_amount);
+  }
   return Number(transaction.amount_covered_by_insurance || 0);
 }
 
@@ -367,10 +390,10 @@ export function Dashboard() {
   const [isStarting, setIsStarting] = useState(false);
   const [showCloseShiftForm, setShowCloseShiftForm] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showPreCloseModal, setShowPreCloseModal] = useState(false);
-  const [showCloseShiftConfirm, setShowCloseShiftConfirm] = useState(false);
+  const [closeShiftConfirmed, setCloseShiftConfirmed] = useState(false);
+  const [closeShiftDelayLeft, setCloseShiftDelayLeft] = useState(0);
   const [toast, setToast] = useState<{ variant: ToastVariant; title: string; message: string; hint?: string } | null>(null);
   const [receivedAmount, setReceivedAmount] = useState('');
   const [isSubmittingRecette, setIsSubmittingRecette] = useState(false);
@@ -419,6 +442,7 @@ export function Dashboard() {
     recettesEspeces: number;
     recettesOrangeMoney: number;
     recettesAssurance: number;
+    recettesDettes: number;
     totalRetours: number;
     totalDepenses: number;
     soldeNetARemettre: number;
@@ -657,6 +681,16 @@ export function Dashboard() {
     const timer = window.setTimeout(() => setToast(null), 2600);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (!showCloseShiftForm) return;
+    setCloseShiftConfirmed(false);
+    setCloseShiftDelayLeft(2);
+    const timer = window.setInterval(() => {
+      setCloseShiftDelayLeft((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [showCloseShiftForm]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -911,8 +945,8 @@ export function Dashboard() {
       email: writer.email,
       user_metadata: writer.user_metadata as Record<string, unknown> | null,
     });
-    const modernType = isCreditSale ? 'Crédit' : 'recette';
-    const legacyTypePreferred = isCreditSale ? 'Crédit' : 'recette';
+    const modernType = isCreditSale ? 'Crédit' : 'Recette';
+    const legacyTypePreferred = isCreditSale ? 'Crédit' : 'Recette';
 
     const transactionDescription = isCreditSale
       ? `Crédit Client - ${customerName}${recetteForm.customerPhone ? ` | Tel: ${recetteForm.customerPhone}` : ''}`
@@ -972,50 +1006,38 @@ export function Dashboard() {
       shift_id: currentShift.id,
       amount: totalAmount,
       description: transactionDescription,
-      type: 'recette',
+      type: isCreditSale ? 'Crédit' : 'Recette',
       payment_method: canonicalMethod,
       status: 'approved',
       created_by: writer.id,
       is_approved: true,
     };
 
-    const payloadLegacyMinimalEnglish = {
+    const payloadLegacyLabels = {
       shift_id: currentShift.id,
       amount: totalAmount,
       description: transactionDescription,
-      type: 'recette',
-      payment_method: canonicalMethod,
+      type: isCreditSale ? 'Crédit' : 'Recette',
+      payment_method: isCreditSale
+        ? 'Crédit / Dette'
+        : normalizePaymentMethodForDb(String(recetteForm.method || 'Espèces')) === 'Orange Money (Code Marchand)'
+          ? 'Orange Money (Code Marchand)'
+          : 'Espèces',
       status: 'approved',
       created_by: writer.id,
       is_approved: true,
-    };
-
-    const payloadEnglishPaymentMethod = {
-      shift_id: currentShift.id,
-      amount: totalAmount,
-      description: transactionDescription,
-      type: 'income',
-      payment_method: canonicalMethod,
-      status: 'approved',
-      created_by: writer.id,
-      is_approved: true,
-    };
-
-    const payloadBareEnglish = {
-      shift_id: currentShift.id,
-      amount: totalAmount,
-      description: transactionDescription,
-      type: 'income',
-      payment_method: canonicalMethod,
-      created_by: writer.id,
     };
 
     const payloadBareFrench = {
       shift_id: currentShift.id,
       amount: totalAmount,
       description: transactionDescription,
-      type: 'recette',
-      payment_method: canonicalMethod,
+      type: isCreditSale ? 'Crédit' : 'Recette',
+      payment_method: isCreditSale
+        ? 'crédit_dette'
+        : normalizePaymentMethodForDb(String(recetteForm.method || 'Espèces')) === 'Orange Money (Code Marchand)'
+          ? 'orange_money'
+          : 'espèces',
       created_by: writer.id,
     };
 
@@ -1023,9 +1045,7 @@ export function Dashboard() {
       payloadBase,
       payloadLegacyCompatible,
       payloadLegacyMinimal,
-      payloadLegacyMinimalEnglish,
-      payloadEnglishPaymentMethod,
-      payloadBareEnglish,
+      payloadLegacyLabels,
       payloadBareFrench,
     ];
 
@@ -1037,7 +1057,11 @@ export function Dashboard() {
         break;
       }
       insertError = attemptError;
-      console.error('Transaction insert attempt failed', attemptError, payload);
+      console.error(
+        'Transaction insert attempt failed',
+        JSON.stringify(attemptError),
+        JSON.stringify(payload)
+      );
       const message = String(
         (attemptError as { message?: string } | null)?.message ||
         (attemptError as { details?: string } | null)?.details ||
@@ -1092,6 +1116,7 @@ export function Dashboard() {
     setClientDebtHint(null);
     setShowVerificationModal(false);
     await refreshTransactions();
+    window.dispatchEvent(new CustomEvent('transactions-updated'));
     setIsSubmittingRecette(false);
     setToast({
       variant: 'success',
@@ -1196,7 +1221,6 @@ export function Dashboard() {
   const executeCloseShift = async () => {
     setError(null);
     setCloseShiftFieldError(null);
-    setShowCloseShiftConfirm(false);
 
     if (!currentShift) {
       setError('Aucune garde active.');
@@ -1227,33 +1251,27 @@ export function Dashboard() {
       .filter(t => t.type === 'recette' && isInsuranceTransaction(t))
       .reduce((sum, t) => sum + getInsuranceCoveredAmount(t), 0);
 
+    const recettesDettes = transactions
+      .filter((t) => isCreditMethod(String(t.method)) && t.status === 'approved')
+      .reduce((sum, t) => sum + Number(t.total_amount || t.amount || 0), 0);
+
     const totalRetours = Math.abs(
       transactions
         .filter(t => t.type === 'retour')
         .reduce((sum, t) => sum + Number(t.amount || 0), 0)
     );
 
-    const totalRecettes = transactions
-      .filter(t => t.type === 'recette')
-      .reduce((sum, t) => sum + getPatientCashPart(t) + getInsuranceCoveredAmount(t), 0);
+    const totalRecettes = recettesEspeces + recettesOrangeMoney + recettesAssurance + recettesDettes;
 
     const totalDepenses = transactions
       .filter(t => t.type === 'dépense' && t.status === 'approved')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const soldeNetARemettre = (recettesEspeces + recettesOrangeMoney) - totalRetours - totalDepenses;
+    const soldeNetARemettre = recettesEspeces - totalRetours - totalDepenses;
 
-    // Expected cash = espèces income + approved espèces expenses
-    const expectedCash = transactions
-      .filter(t => isCashMethod(String(t.method)))
-      .reduce((sum, t) => {
-        if (t.type === 'recette') {
-          return sum + getPatientCashPart(t);
-        } else if (t.type === 'dépense' && t.status === 'approved') {
-          return sum - t.amount;
-        }
-        return sum;
-      }, 0);
+    // Écart = Physical_Cash_Reported - (Fond_de_Caisse + Espèces_Recettes - Dépenses)
+    const openingBalance = Number((currentShift as unknown as { opening_balance?: number | null })?.opening_balance || 0);
+    const expectedCash = openingBalance + recettesEspeces - totalDepenses;
 
     // Difference between what's in the drawer and what we expect
     const cashDifference = actualCashAmount - expectedCash;
@@ -1284,7 +1302,7 @@ export function Dashboard() {
         .update(closePayload)
         .eq('id', currentShift.id);
 
-      if (updateError && isMissingShiftBalanceColumnsError(updateError)) {
+      if (updateError && (isMissingShiftBalanceColumnsError(updateError) || isMissingShiftCloseReasonColumnError(updateError))) {
         const retry = await supabase
           .from('shifts')
           .update({
@@ -1325,6 +1343,7 @@ export function Dashboard() {
       recettesEspeces,
       recettesOrangeMoney,
       recettesAssurance,
+      recettesDettes,
       totalRetours,
       totalDepenses,
       soldeNetARemettre,
@@ -1335,7 +1354,8 @@ export function Dashboard() {
 
     setShowCloseShiftForm(false);
     setCloseShiftForm({ actualCash: '' });
-    setShowCloseShiftConfirm(false);
+    setCloseShiftConfirmed(false);
+    setCloseShiftDelayLeft(0);
     setToast({
       variant: 'success',
       title: 'Garde cloturee',
@@ -1361,7 +1381,7 @@ export function Dashboard() {
       .eq('id', globalActiveShift.shift_id)
       .is('ended_at', null);
 
-    if (forceError && isMissingShiftBalanceColumnsError(forceError)) {
+    if (forceError && (isMissingShiftBalanceColumnsError(forceError) || isMissingShiftCloseReasonColumnError(forceError))) {
       const retry = await supabase
         .from('shifts')
         .update({
@@ -1395,15 +1415,35 @@ export function Dashboard() {
     });
   };
 
-  const handleCloseShift = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePostShiftLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate('/login', { replace: true });
+    } catch (logoutError) {
+      setToast({
+        variant: 'error',
+        title: 'Déconnexion échouée',
+        message: logoutError instanceof Error ? logoutError.message : 'Impossible de se déconnecter.',
+      });
+    }
+  };
+
+  const handleCloseShift = async () => {
     setCloseShiftFieldError(null);
     const value = Number.parseFloat(closeShiftForm.actualCash || '');
     if (!Number.isFinite(value) || value < 0) {
       setCloseShiftFieldError('Le montant du tiroir doit être un nombre positif.');
       return;
     }
-    setShowCloseShiftConfirm(true);
+    if (!closeShiftConfirmed) {
+      setCloseShiftFieldError('Veuillez confirmer l’exactitude du fond de caisse.');
+      return;
+    }
+    if (closeShiftDelayLeft > 0) {
+      setCloseShiftFieldError('Veuillez attendre la fin du délai de sécurité.');
+      return;
+    }
+    await executeCloseShift();
   };
 
   const cashierName = getCashierName({
@@ -1435,6 +1475,21 @@ export function Dashboard() {
   const preCloseOrangeMoneyTotal = cashierTransactions
     .filter((tx) => tx.type === 'recette' && isOrangeMethod(String(tx.method)))
     .reduce((sum, tx) => sum + getPatientCashPart(tx), 0);
+  const shiftCashTotal = transactions
+    .filter((tx) => tx.type === 'recette' && isCashMethod(String(tx.method)))
+    .reduce((sum, tx) => sum + getPatientCashPart(tx), 0)
+    - transactions
+      .filter((tx) => tx.type === 'dépense' && tx.status === 'approved')
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  const shiftOrangeMoneyTotal = transactions
+    .filter((tx) => tx.type === 'recette' && isOrangeMethod(String(tx.method)))
+    .reduce((sum, tx) => sum + getPatientCashPart(tx), 0);
+  const shiftDebtTotal = transactions
+    .filter((tx) => tx.type === 'crédit' || tx.type === 'Crédit' || isCreditMethod(String(tx.method)))
+    .reduce((sum, tx) => sum + Number(tx.total_amount || tx.amount || 0), 0);
+  const shiftAssuranceClaimTotal = transactions
+    .filter((tx) => tx.type === 'recette')
+    .reduce((sum, tx) => sum + getInsuranceCoveredAmount(tx), 0);
   const preCloseReturnsTotal = Math.abs(
     cashierTransactions
       .filter((tx) => tx.type === 'retour')
@@ -1442,6 +1497,7 @@ export function Dashboard() {
   );
   const insurerOptions = ['CNAMGS', 'NSIA', 'LANALA', 'SAHAM', 'Activa', 'Autre'];
   const coverageRateOptions = [70, 80, 90, 100];
+  const saleReady = Number.isFinite(amountValue) && amountValue > 0;
   const isTerminalMode = (showTerminal || forcedTerminalView || isTerminalQueryView) && !closedShiftSummary;
   const isCashierFocusedTerminal = isCashier && isTerminalMode;
   const startOfToday = new Date();
@@ -1535,7 +1591,7 @@ export function Dashboard() {
   }, [isTerminalMode, currentShift, showPreCloseModal, showCloseShiftForm, showVerificationModal, quickAmounts, recetteForm.amount, recetteForm.method, recetteForm.isInsuranceSale, recetteForm.insurerName, recetteForm.matricule, recetteForm.coverageRate, recetteForm.customerName, recetteForm.customerPhone, openVerificationModal]);
 
   return (
-    <div className={isCashierFocusedTerminal ? 'space-y-0' : 'p-6 lg:p-8 space-y-6'}>
+    <div className={isTerminalMode ? 'h-full overflow-hidden space-y-0' : (isCashierFocusedTerminal ? 'space-y-0' : 'p-6 lg:p-8 space-y-6')}>
       {!isCashierFocusedTerminal && (
         <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
@@ -1739,7 +1795,7 @@ export function Dashboard() {
 
       {
         closedShiftSummary && (
-          <section className="mb-8 rounded-lg border border-green-200 bg-green-50 p-8">
+          <section className="shift-print-area mb-8 rounded-lg border border-green-200 bg-green-50 p-8">
             <div className="mb-6 flex items-center justify-center gap-3">
               <CheckCircle className="h-8 w-8 text-green-600" />
               <h2 className="text-2xl font-bold text-green-900">Garde Clôturée avec Succès</h2>
@@ -1766,16 +1822,20 @@ export function Dashboard() {
                 </p>
                 <div className="mt-3 space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">💵 Espèces</span>
-                    <span>{closedShiftSummary.recettesEspeces.toFixed(2).replace('.', ',')} GNF</span>
+                    <span className="font-bold text-emerald-700">💵 Espèces</span>
+                    <span className="font-black text-emerald-700">{closedShiftSummary.recettesEspeces.toFixed(2).replace('.', ',')} GNF</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">📱 Orange Money</span>
-                    <span>{closedShiftSummary.recettesOrangeMoney.toFixed(2).replace('.', ',')} GNF</span>
+                    <span className="font-bold text-orange-600">📱 Orange Money</span>
+                    <span className="font-black text-orange-600">{closedShiftSummary.recettesOrangeMoney.toFixed(2).replace('.', ',')} GNF</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">🏥 Assurance</span>
-                    <span>{closedShiftSummary.recettesAssurance.toFixed(2).replace('.', ',')} GNF</span>
+                    <span className="font-bold text-blue-600">🏥 Assurance</span>
+                    <span className="font-black text-blue-600">{closedShiftSummary.recettesAssurance.toFixed(2).replace('.', ',')} GNF</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-bold text-rose-600">💳 Crédits/Dettes Clients</span>
+                    <span className="font-black text-rose-600">{closedShiftSummary.recettesDettes.toFixed(2).replace('.', ',')} GNF</span>
                   </div>
                 </div>
               </div>
@@ -1792,6 +1852,10 @@ export function Dashboard() {
                 <p className="mt-1 font-semibold text-foreground">
                   {closedShiftSummary.totalRetours.toFixed(2).replace('.', ',')} GNF
                 </p>
+              </div>
+
+              <div className="border-t border-slate-300 pt-4">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-500">Final Balance (Écart)</p>
               </div>
 
               <div className="border-t border-border pt-4">
@@ -1817,64 +1881,45 @@ export function Dashboard() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="no-print mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Button
                 onClick={() => {
-                  const message = generateWhatsAppMessage({
-                    date: closedShiftSummary.date,
-                    cashierName: user?.email?.split('@')[0] || 'Caissier',
-                    totalRecettes: closedShiftSummary.totalRecettes,
-                    recettesEspeces: closedShiftSummary.recettesEspeces,
-                    recettesOrangeMoney: closedShiftSummary.recettesOrangeMoney,
-                    recettesAssurance: closedShiftSummary.recettesAssurance,
-                    totalDepenses: closedShiftSummary.totalDepenses,
-                    cashDifference: closedShiftSummary.cashDifference,
-                  });
-                  shareViaWhatsApp(message);
+                  const whatsappMessage =
+                    `Rapport de Garde - Pharmacie Djoma. ` +
+                    `Caissier: ${user?.email?.split('@')[0] || 'Caissier'}. ` +
+                    `Date: ${closedShiftSummary.date}. ` +
+                    `Espèces: ${formatAmountGNF(closedShiftSummary.recettesEspeces)} GNF. ` +
+                    `OM: ${formatAmountGNF(closedShiftSummary.recettesOrangeMoney)} GNF. ` +
+                    `Assurance: ${formatAmountGNF(closedShiftSummary.recettesAssurance)} GNF. ` +
+                    `Dettes: ${formatAmountGNF(closedShiftSummary.recettesDettes)} GNF. ` +
+                    `Écart: ${formatAmountGNF(closedShiftSummary.cashDifference)} GNF.`;
+                  window.open(`https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`, '_blank', 'noopener,noreferrer');
                 }}
-                className="gap-2 bg-green-600 hover:bg-green-700"
+                className="h-14 justify-center rounded-xl bg-green-600 px-4 text-sm font-black text-white hover:bg-green-700"
               >
-                <Share2 className="h-4 w-4" />
-                Partager sur WhatsApp
+                📱 Rapport WhatsApp (Admin)
               </Button>
               <Button
-                onClick={() => {
-                  downloadShiftReceiptPDF({
-                    date: closedShiftSummary.date,
-                    cashierName: user?.email?.split('@')[0] || 'Caissier',
-                    expectedCash: closedShiftSummary.recettesEspeces,
-                    actualCash: closedShiftSummary.recettesEspeces,
-                    cashDifference: 0,
-                  });
-
-                  const ownerMessage =
-                    `*RAPPORT JOURNALIER - PHARMACIE DJOMA*\n` +
-                    `-----------------------------------\n` +
-                    `📅 Date: ${closedShiftSummary.date}\n` +
-                    `💰 Espèces: ${closedShiftSummary.recettesEspeces.toFixed(2).replace('.', ',')} GNF\n` +
-                    `📱 Orange Money: ${closedShiftSummary.recettesOrangeMoney.toFixed(2).replace('.', ',')} GNF\n` +
-                    `🔄 Retours: ${closedShiftSummary.totalRetours.toFixed(2).replace('.', ',')} GNF\n` +
-                    `📉 Dépenses: ${closedShiftSummary.totalDepenses.toFixed(2).replace('.', ',')} GNF\n` +
-                    `✅ *Net à Remettre: ${closedShiftSummary.soldeNetARemettre.toFixed(2).replace('.', ',')} GNF*\n` +
-                    `-----------------------------------\n` +
-                    `Propulsé par BIZMAP - Croissance Digitale.`;
-
-                  const ownerUrl = `https://wa.me/?text=${encodeURIComponent(ownerMessage)}`;
-                  window.open(ownerUrl, '_blank', 'noopener,noreferrer');
-                }}
-                className="gap-2 bg-emerald-800 hover:bg-emerald-900"
+                onClick={() => window.print()}
+                className="h-14 justify-center rounded-xl bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700"
               >
-                <Share2 className="h-4 w-4" />
-                Partager sur WhatsApp Propriétaire
+                🖨️ Imprimer le Bilan
               </Button>
               <Button
                 onClick={() => {
                   setClosedShiftSummary(null);
-                  window.location.href = '/dashboard';
+                  navigate('/dashboard?view=terminal', { replace: true });
+                  setShowTerminal(true);
                 }}
-                variant="outline"
+                className="h-14 justify-center rounded-xl bg-violet-600 px-4 text-sm font-black text-white hover:bg-violet-700"
               >
-                Retour à Pharmacie Djoma
+                🔄 Nouvelle Garde
+              </Button>
+              <Button
+                onClick={() => void handlePostShiftLogout()}
+                className="h-14 justify-center rounded-xl bg-slate-700 px-4 text-sm font-black text-white hover:bg-rose-700"
+              >
+                🚪 Déconnexion
               </Button>
             </div>
           </section>
@@ -1887,438 +1932,242 @@ export function Dashboard() {
             {isTerminalMode ? (
               <>
                 {currentShift ? (
-                  <section ref={terminalSectionRef} className={`relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white ${isCashierFocusedTerminal ? 'min-h-screen border-0 rounded-none shadow-none' : 'min-h-[74vh] rounded-3xl border border-slate-200 shadow-2xl'}`}>
-                  <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl" />
-                  <div className="pointer-events-none absolute -right-10 top-1/4 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
+                  <section
+                    ref={terminalSectionRef}
+                    className={`relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white ${
+                      isCashierFocusedTerminal
+                        ? 'h-[100vh] border-0 rounded-none shadow-none'
+                        : 'h-[calc(100vh-10rem)] rounded-3xl border border-slate-200 shadow-2xl'
+                    }`}
+                  >
+                    <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl" />
+                    <div className="pointer-events-none absolute -right-10 top-1/4 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
 
-                  <div className="relative flex min-h-[74vh] flex-col p-5 md:p-8">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-2xl font-black tracking-tight md:text-3xl">Pharmacie Djoma</h2>
-                        <p className="mt-1 text-sm text-slate-100">Caissier: <span className="font-black text-white">{cashierName}</span></p>
-                      </div>
-                      <TerminalTimePanel startedAt={currentShift.started_at} isOnline={isOnline} />
-                      <div className="flex flex-wrap gap-2">
-                        {isAdmin && (
-                          <div className="inline-flex h-11 items-center rounded-xl border border-emerald-300/40 bg-emerald-900/20 p-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigate('/dashboard', { replace: true });
-                                setShowTerminal(false);
-                              }}
-                              className={`rounded-lg px-3 text-[10px] font-black uppercase tracking-wider transition ${
-                                !isTerminalMode
-                                  ? 'bg-emerald-500 text-slate-950'
-                                  : 'text-emerald-100 hover:bg-emerald-800/40'
-                              }`}
-                            >
-                              Vue Admin
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigate('/dashboard?view=terminal', { replace: true });
-                                setShowTerminal(true);
-                              }}
-                              className={`rounded-lg px-3 text-[10px] font-black uppercase tracking-wider transition ${
-                                isTerminalMode
-                                  ? 'bg-emerald-500 text-slate-950'
-                                  : 'text-emerald-100 hover:bg-emerald-800/40'
-                              }`}
-                            >
-                              Vue Terminal
-                            </button>
-                          </div>
-                        )}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => void toggleFullscreen()}
-                          className="border-cyan-400/40 bg-cyan-900/20 text-cyan-100 hover:bg-cyan-900/40"
-                        >
-                          {isFullscreen ? <Minimize2 className="mr-2 h-4 w-4" /> : <Maximize2 className="mr-2 h-4 w-4" />}
-                          {isFullscreen ? 'Quitter Plein Écran' : 'Plein Écran'}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setShowHistoryPanel((prev) => !prev)}
-                          className="border-slate-600 bg-slate-900/60 text-slate-100 hover:bg-slate-800"
-                        >
-                          <History className="mr-2 h-4 w-4" />
-                          Historique
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setShowPreCloseModal(true)}
-                          className="border-amber-400/40 bg-amber-900/20 text-amber-100 hover:bg-amber-900/40"
-                        >
-                          Pré-Clôture
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setShowCloseShiftForm(true)}
-                          className="border-rose-400/40 bg-rose-900/20 text-rose-100 hover:bg-rose-900/40"
-                        >
-                          Fin de Garde
-                        </Button>
-                      </div>
-                    </div>
-
-                    <form onSubmit={handleAddRecette} className="mx-auto mt-8 flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-6 pb-32 md:mt-12 md:pb-0">
-                      <Input
-                        ref={amountInputRef}
-                        type="number"
-                        inputMode="numeric"
-                        step="500"
-                        min="0"
-                        required
-                        placeholder="0"
-                        value={recetteForm.amount}
-                        onChange={(e) => setRecetteForm((prev) => ({ ...prev, amount: sanitizeGnfAmountInput(e.target.value) }))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            openVerificationModal();
-                          }
-                        }}
-                        className="h-24 w-full rounded-3xl border-2 border-emerald-300/70 bg-white/95 text-center text-4xl font-black text-slate-900 shadow-2xl placeholder:text-slate-300 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/40 md:h-28 md:text-6xl"
-                      />
-                      <div className="flex w-full max-w-xl flex-wrap items-center justify-center gap-2">
-                        {[1000, 5000, 10000, 20000].map((delta) => (
-                          <button
-                            key={delta}
+                    <div className="relative flex h-full flex-col gap-3 p-3 md:p-4">
+                      <div className="flex shrink-0 items-center justify-between gap-3">
+                        <div>
+                          <h2 className="text-xl font-black tracking-tight">Pharmacie Djoma</h2>
+                          <p className="text-xs text-slate-200">Caissier: <span className="font-black text-white">{cashierName}</span></p>
+                        </div>
+                        <div className="hidden xl:block">
+                          <TerminalTimePanel startedAt={currentShift.started_at} isOnline={isOnline} />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" onClick={() => void toggleFullscreen()} className="border-cyan-400/40 bg-cyan-900/20 text-cyan-100 hover:bg-cyan-900/40">
+                            {isFullscreen ? <Minimize2 className="mr-2 h-4 w-4" /> : <Maximize2 className="mr-2 h-4 w-4" />}
+                            {isFullscreen ? 'Quitter Plein Écran' : 'Plein Écran'}
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => setShowPreCloseModal(true)} className="border-amber-400/40 bg-amber-900/20 text-amber-100 hover:bg-amber-900/40">
+                            Pré-Clôture
+                          </Button>
+                          <Button
                             type="button"
-                            onClick={() => handleAddAmountDelta(delta)}
-                            className="rounded-xl border border-emerald-300/50 bg-emerald-500/15 px-3 py-2 text-xs font-black uppercase tracking-wider text-emerald-100 hover:bg-emerald-500/30"
+                            variant="outline"
+                            onClick={() => {
+                              setCloseShiftForm({ actualCash: String(Math.max(0, Number(shiftCashTotal.toFixed(2)))) });
+                              setShowCloseShiftForm(true);
+                            }}
+                            className="border-rose-400/40 bg-rose-900/20 text-rose-100 hover:bg-rose-900/40"
                           >
-                            +{(delta / 1000).toLocaleString('fr-FR')}k
-                          </button>
-                        ))}
+                            Fin de Garde
+                          </Button>
+                        </div>
                       </div>
-                      <div className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-900/60 p-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {quickAmounts.map((quickAmount, index) => (
-                            <div key={quickAmount} className="group inline-flex items-center">
-                              <button
-                                type="button"
-                                onClick={() => handleApplyQuickAmount(quickAmount)}
-                                className="rounded-l-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2.5 text-xs font-black uppercase tracking-wider text-emerald-100 hover:bg-emerald-500/25"
-                                title={`Raccourci clavier: ${index + 1}`}
-                              >
-                                {index + 1}. {formatAmountGNF(quickAmount)}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveQuickAmount(quickAmount)}
-                                className="rounded-r-xl border border-l-0 border-emerald-300/40 bg-slate-900/70 px-2 py-2 text-[10px] font-black text-slate-300 hover:bg-rose-900/40 hover:text-rose-100"
-                                title="Supprimer ce montant rapide"
-                              >
-                                X
-                              </button>
-                            </div>
-                          ))}
-                          <div className="ml-auto flex items-center gap-2">
-                            <Input
-                                type="number"
-                                inputMode="numeric"
-                                min="1"
-                                step="1"
-                                value={quickAmountInput}
-                                onChange={(e) => setQuickAmountInput(e.target.value)}
-                                placeholder="Ajouter montant"
-                                className="h-10 w-36 rounded-xl border-slate-600 bg-slate-950 text-xs font-bold text-white placeholder:text-slate-500"
-                              />
-                              <Button
-                                type="button"
-                                onClick={handleAddQuickAmount}
-                                variant="outline"
-                                className="h-10 rounded-xl border-slate-600 bg-slate-900 text-xs font-black text-slate-100 hover:bg-slate-800"
-                              >
-                                Ajouter
-                              </Button>
+
+                      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[25%_50%_25%]">
+                        <aside className="order-2 flex min-h-0 flex-col gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 p-3 xl:order-1">
+                          <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Mini Shift Info</p>
+                            <p className="mt-1 text-sm font-bold text-white">{cashierName}</p>
+                            <p className="text-xs text-slate-300">{isOnline ? 'Status: Online' : 'Status: Offline'}</p>
+                            <p className="text-xs font-bold text-amber-300">Temps de garde: {formatElapsed(currentShift.started_at)}</p>
+                          </div>
+                          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">10 Dernières Entrées</p>
+                            <div className="sidebar-scrollbar max-h-[40vh] space-y-2 overflow-y-auto pr-1">
+                              {recentEntries.length === 0 ? (
+                                <p className="text-xs text-slate-400">Aucune entrée récente.</p>
+                              ) : (
+                                recentEntries.map((tx) => (
+                                  <div key={tx.id} className="rounded-lg border border-slate-800 bg-slate-950/70 p-2">
+                                    <p className="text-sm font-black text-white">{formatAmountGNF(tx.amount)} GNF</p>
+                                    <p className="text-[10px] text-slate-400">{new Date(tx.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                                  </div>
+                                ))
+                              )}
                             </div>
                           </div>
-                      </div>
-                      <div className="flex w-full max-w-xl flex-wrap items-center justify-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Espèces' }))}
-                          className={`min-h-12 flex-1 rounded-2xl border px-6 py-3 text-sm font-black uppercase tracking-wider transition sm:flex-none ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'Espèces'
-                            ? 'border-emerald-300 bg-emerald-500 text-slate-950'
-                            : 'border-slate-600 bg-slate-800/70 text-slate-200 hover:bg-slate-700/80'
-                            }`}
-                        >
-                          Espèces
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Orange Money (Code Marchand)' }))}
-                          className={`min-h-12 flex-1 rounded-2xl border px-6 py-3 text-sm font-black uppercase tracking-wider transition sm:flex-none ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'Orange Money (Code Marchand)'
-                            ? 'border-emerald-300 bg-emerald-500 text-slate-950'
-                            : 'border-slate-600 bg-slate-800/70 text-slate-200 hover:bg-slate-700/80'
-                            }`}
-                        >
-                          Orange Money
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Crédit / Dette', isInsuranceSale: false }))}
-                          className={`min-h-12 flex-1 rounded-2xl border px-6 py-3 text-sm font-black uppercase tracking-wider transition sm:flex-none ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'crédit_dette'
-                            ? 'border-emerald-300 bg-emerald-500 text-slate-950'
-                            : 'border-slate-600 bg-slate-800/70 text-slate-200 hover:bg-slate-700/80'
-                            }`}
-                        >
-                          Crédit / Dette
-                        </button>
-                      </div>
-                      {isCreditSale && (
-                        <div className="w-full max-w-xl rounded-2xl border border-amber-300/40 bg-amber-950/30 p-4">
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <label className="text-left">
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-amber-100">Nom du Client *</span>
-                              <Input
-                                type="text"
-                                required
-                                autoComplete="off"
-                                value={recetteForm.customerName}
-                                onChange={(e) => {
-                                  setRecetteForm((prev) => ({ ...prev, customerName: e.target.value }));
-                                  setShowClientSuggestions(true);
-                                }}
-                                onBlur={() => {
-                                  window.setTimeout(() => setShowClientSuggestions(false), 120);
-                                }}
-                                onFocus={() => {
-                                  if (clientSuggestions.length > 0) {
+                        </aside>
+
+                        <form onSubmit={handleAddRecette} className="order-1 flex min-h-0 flex-col gap-3 xl:order-2">
+                          <Input
+                            ref={amountInputRef}
+                            type="number"
+                            inputMode="numeric"
+                            step="500"
+                            min="0"
+                            required
+                            placeholder="0"
+                            value={recetteForm.amount}
+                            onChange={(e) => setRecetteForm((prev) => ({ ...prev, amount: sanitizeGnfAmountInput(e.target.value) }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                openVerificationModal();
+                              }
+                            }}
+                            className="h-28 rounded-2xl border-2 border-emerald-300/60 bg-black text-center font-black text-[#39ff14] shadow-2xl placeholder:text-slate-600 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/40"
+                            style={{ fontSize: 'clamp(2.25rem, 7vw, 5rem)', lineHeight: 1.05 }}
+                          />
+
+                          <div className="grid gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Espèces' }))}
+                              className={`h-14 rounded-xl px-5 text-sm font-black uppercase tracking-[0.12em] transition ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'Espèces' ? 'bg-emerald-500 text-slate-950' : 'bg-emerald-900/40 text-emerald-100 hover:bg-emerald-800/60'}`}
+                            >
+                              Espèces
+                            </button>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Orange Money (Code Marchand)' }))}
+                                className={`h-14 rounded-xl px-4 text-sm font-black uppercase tracking-[0.1em] transition ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'Orange Money (Code Marchand)' ? 'bg-orange-500 text-slate-950' : 'bg-orange-900/40 text-orange-100 hover:bg-orange-800/60'}`}
+                              >
+                                Orange Money
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Crédit / Dette', isInsuranceSale: false }))}
+                                className={`h-14 rounded-xl px-4 text-sm font-black uppercase tracking-[0.1em] transition ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'crédit_dette' ? 'bg-rose-500 text-white' : 'bg-rose-900/40 text-rose-100 hover:bg-rose-800/60'}`}
+                              >
+                                Crédit
+                              </button>
+                            </div>
+                          </div>
+
+                          {isCreditSale && (
+                            <div className="rounded-xl border border-amber-300/40 bg-amber-950/30 p-3">
+                              <div className="grid gap-2">
+                                <Input
+                                  type="text"
+                                  required
+                                  autoComplete="off"
+                                  value={recetteForm.customerName}
+                                  onChange={(e) => {
+                                    setRecetteForm((prev) => ({ ...prev, customerName: e.target.value }));
                                     setShowClientSuggestions(true);
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    openVerificationModal();
-                                  }
-                                }}
-                                placeholder="Nom complet du débiteur"
-                                className="h-11 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400 focus-visible:!border-emerald-600 focus-visible:!ring-emerald-600/30"
-                              />
+                                  }}
+                                  onBlur={() => window.setTimeout(() => setShowClientSuggestions(false), 120)}
+                                  onFocus={() => clientSuggestions.length > 0 && setShowClientSuggestions(true)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      openVerificationModal();
+                                    }
+                                  }}
+                                  placeholder="Nom complet du débiteur"
+                                  className="h-10 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400"
+                                />
+                                <Input
+                                  type="tel"
+                                  inputMode="tel"
+                                  value={recetteForm.customerPhone}
+                                  onChange={(e) => setRecetteForm((prev) => ({ ...prev, customerPhone: e.target.value }))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      openVerificationModal();
+                                    }
+                                  }}
+                                  placeholder="N° de téléphone (6xx xx xx xx)"
+                                  className="h-10 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400"
+                                />
+                              </div>
                               {showClientSuggestions && clientSuggestions.length > 0 && (
-                                <div className="relative z-20 mt-1 max-h-44 overflow-auto rounded-xl border border-slate-300 bg-white shadow-xl">
+                                <div className="mt-2 max-h-32 overflow-auto rounded-xl border border-slate-300 bg-white">
                                   {clientSuggestions.map((client) => (
-                                    <button
-                                      key={client.id}
-                                      type="button"
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => handleSelectClientSuggestion(client)}
-                                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-100"
-                                    >
+                                    <button key={client.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => handleSelectClientSuggestion(client)} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-slate-100">
                                       <span className="font-semibold text-slate-900">{client.nom}</span>
-                                      <span className="text-xs font-bold text-slate-500">
-                                        Dette: {formatAmountGNF(Number(client.solde_dette || 0))} GNF
-                                      </span>
+                                      <span className="font-bold text-slate-500">{formatAmountGNF(Number(client.solde_dette || 0))} GNF</span>
                                     </button>
                                   ))}
                                 </div>
                               )}
-                            </label>
-                            <label className="text-left">
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-amber-100">Téléphone</span>
-                              <Input
-                                type="tel"
-                                inputMode="tel"
-                                value={recetteForm.customerPhone}
-                                onChange={(e) => setRecetteForm((prev) => ({ ...prev, customerPhone: e.target.value }))}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    openVerificationModal();
-                                  }
-                                }}
-                                placeholder="N° de téléphone (6xx xx xx xx)"
-                                className="h-11 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400 focus-visible:!border-emerald-600 focus-visible:!ring-emerald-600/30"
-                              />
-                            </label>
-                          </div>
-                          {clientDebtHint != null && clientDebtHint > 0 && (
-                            <p className="mt-2 text-xs font-black text-amber-100">
-                              Solde actuel: {formatAmountGNF(clientDebtHint)} GNF
-                            </p>
+                            </div>
                           )}
-                          <p className="mt-2 text-xs font-semibold text-amber-100/90">
-                            Vente enregistrée en dette client jusqu&apos;à encaissement.
-                          </p>
-                        </div>
-                      )}
-                      <div className="w-full max-w-3xl rounded-2xl border border-cyan-300/30 bg-cyan-950/20 p-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Raccourcis Terminal</p>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-cyan-50">
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">/ Cibler montant</span>
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Alt+1 Espèces</span>
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Alt+2 Orange Money</span>
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Alt+3 Crédit / Dette</span>
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Ctrl+Entrée Vérifier</span>
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Entrée valider (dans la fenêtre)</span>
-                        </div>
-                      </div>
-                      {!isCreditSale && (
-                        <div className="w-full max-w-xl rounded-2xl border-2 border-cyan-300/60 !bg-white p-4 shadow-lg shadow-cyan-500/10">
-                        <div className="mb-3 flex items-center justify-between">
-                          <p className="text-sm font-black uppercase tracking-[0.2em] text-cyan-800">Mode Assurance</p>
-                          <button
-                            type="button"
-                            onClick={() => setRecetteForm((prev) => ({
-                              ...prev,
-                              isInsuranceSale: !prev.isInsuranceSale,
-                            }))}
-                            className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition ${
-                              recetteForm.isInsuranceSale
-                                ? 'bg-cyan-600 text-white'
-                                : 'bg-white text-slate-900 border border-slate-300 hover:bg-slate-100'
-                            }`}
+
+                          <Button
+                            type="submit"
+                            disabled={!isOnline}
+                            className={`h-16 rounded-2xl text-lg font-black uppercase tracking-[0.15em] ${saleReady ? 'animate-pulse bg-emerald-500 text-slate-950 hover:bg-emerald-400' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
                           >
-                            {recetteForm.isInsuranceSale ? 'Activé' : 'Désactivé'}
-                          </button>
-                        </div>
-                        <p className="mb-3 text-xs font-semibold text-slate-700">
-                          Activez ce mode pour split automatique Patient / Assurance sans calcul manuel.
-                        </p>
-                        {recetteForm.isInsuranceSale && (
-                          <div className="space-y-3">
-                            <div>
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-800">Assureur</span>
-                              <div className="flex flex-wrap gap-2">
-                                {insurerOptions.map((insurer) => (
-                                  <button
-                                    key={insurer}
-                                    type="button"
-                                    onClick={() => setRecetteForm((prev) => ({ ...prev, insurerName: insurer }))}
-                                    className={`rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-wider ${
-                                      recetteForm.insurerName === insurer
-                                        ? 'border-cyan-700 bg-cyan-600 text-white'
-                                        : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-100'
-                                    }`}
-                                  >
-                                    {insurer}
-                                  </button>
-                                ))}
-                              </div>
+                            Valider
+                          </Button>
+                        </form>
+
+                        <aside className="order-3 flex min-h-0 flex-col gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 p-3">
+                          <div>
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Quick Add</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[1000, 5000, 10000, 20000].map((delta) => (
+                                <button key={delta} type="button" onClick={() => handleAddAmountDelta(delta)} className="h-12 rounded-xl border border-emerald-300/40 bg-emerald-500/15 text-sm font-black text-emerald-100 hover:bg-emerald-500/30">
+                                  +{(delta / 1000).toLocaleString('fr-FR')}k
+                                </button>
+                              ))}
                             </div>
-                            <div>
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-800">Taux Prise en Charge</span>
-                              <div className="flex flex-wrap gap-2">
-                                {coverageRateOptions.map((rate) => (
-                                  <button
-                                    key={rate}
-                                    type="button"
-                                    onClick={() => setRecetteForm((prev) => ({ ...prev, coverageRate: rate }))}
-                                    className={`rounded-xl border px-4 py-2 text-xs font-black uppercase tracking-wider ${
-                                      recetteForm.coverageRate === rate
-                                        ? 'border-emerald-700 bg-emerald-600 text-white'
-                                        : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-100'
-                                    }`}
-                                  >
-                                    {rate}%
-                                  </button>
-                                ))}
+                          </div>
+
+                          {!isCreditSale && (
+                            <div className="rounded-xl border border-cyan-300/40 bg-cyan-950/20 p-3">
+                              <div className="mb-2 flex items-center justify-between">
+                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">Mode Assurance</p>
+                                <button
+                                  type="button"
+                                  onClick={() => setRecetteForm((prev) => ({ ...prev, isInsuranceSale: !prev.isInsuranceSale }))}
+                                  className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase ${recetteForm.isInsuranceSale ? 'bg-cyan-500 text-white' : 'bg-slate-200 text-slate-900'}`}
+                                >
+                                  {recetteForm.isInsuranceSale ? 'On' : 'Off'}
+                                </button>
                               </div>
-                            </div>
-                            <label className="text-left">
-                              <span className="mb-1 block text-xs font-black uppercase tracking-wider text-slate-800">N° de Bon</span>
-                              <Input
-                                type="text"
-                                value={recetteForm.matricule}
-                                onChange={(e) => setRecetteForm((prev) => ({ ...prev, matricule: e.target.value }))}
-                                placeholder="Ex: CN-84593"
-                                className="h-11 rounded-xl !border-2 !border-slate-300 !bg-white !text-black text-sm font-semibold placeholder:!text-slate-400 focus-visible:!border-cyan-600 focus-visible:!ring-cyan-600/40"
-                              />
-                            </label>
-                          </div>
-                        )}
-                        {recetteForm.isInsuranceSale && (
-                          <div className="mt-3 grid gap-2 text-sm font-bold md:grid-cols-3">
-                            <p className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900">
-                              Total: <span className="text-black">{formatAmountGNF(amountValue)} GNF</span>
-                            </p>
-                            <p className={`rounded-xl border px-3 py-2 ${flashPatientPart ? 'border-emerald-700 bg-emerald-200 text-emerald-900' : 'border-emerald-300 bg-emerald-50 text-emerald-800'}`}>
-                              Part Patient: <span className="text-emerald-900">{formatAmountGNF(patientPart)} GNF</span>
-                            </p>
-                            <p className="rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2 text-cyan-800">
-                              Part Assurance: <span className="text-cyan-900">{formatAmountGNF(insurancePart)} GNF</span>
-                            </p>
-                          </div>
-                        )}
-                        </div>
-                      )}
-                      <Button
-                        type="submit"
-                        disabled={!isOnline}
-                        className="hidden h-16 w-full max-w-xl rounded-2xl bg-emerald-500 text-lg font-black text-slate-950 hover:bg-emerald-400 md:inline-flex"
-                      >
-                        {isCreditSale ? 'Vérifier la Dette Client' : 'Vérifier la Vente (Entrée)'}
-                      </Button>
-
-                      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-emerald-300/30 bg-slate-950/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md md:hidden">
-                        <div className="mx-auto flex w-full max-w-xl items-center justify-between rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2">
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-300">{isCreditSale ? 'Dette Totale' : 'A encaisser'}</p>
-                          <p className="text-lg font-black text-emerald-300">{formatAmountGNF(isCreditSale ? amountValue : amountToCollect)} GNF</p>
-                        </div>
-                        <Button
-                          type="submit"
-                          disabled={!isOnline}
-                          className="mt-2 h-14 w-full rounded-xl bg-emerald-500 text-base font-black text-slate-950 hover:bg-emerald-400"
-                        >
-                          {isCreditSale ? 'Vérifier la Dette' : 'Vérifier la Vente'}
-                        </Button>
-                      </div>
-                    </form>
-
-                    <p className="mt-6 text-center text-xs uppercase tracking-[0.3em] text-slate-400">
-                      Propulsé par <span className="font-semibold text-slate-200">BIZMAP</span>
-                    </p>
-                  </div>
-
-                  <aside className={`absolute bottom-0 right-0 top-0 z-20 w-full max-w-sm border-l border-slate-700/70 bg-slate-950/95 p-5 transition-transform duration-300 md:w-[360px] ${showHistoryPanel ? 'translate-x-0' : 'translate-x-full'}`}>
-                    <div className="mb-4 flex items-center justify-between">
-                      <h3 className="text-sm font-black uppercase tracking-widest text-slate-300">10 Dernières Entrées</h3>
-                      <button type="button" onClick={() => setShowHistoryPanel(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="space-y-3">
-                      {recentEntries.length === 0 ? (
-                        <p className="text-sm text-slate-400">Aucune entrée récente.</p>
-                      ) : (
-                        recentEntries.map((tx) => {
-                          const statusLabel = tx.type === 'retour' ? 'Retourné' : 'Validé';
-                          const isInsurance = isInsuranceTransaction(tx);
-                          return (
-                            <div key={tx.id} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm font-bold text-white">{formatAmountGNF(tx.amount)} GNF</p>
-                                <div className="flex items-center gap-2">
-                                  {isInsurance && (
-                                    <span className="rounded-md border border-cyan-300/40 bg-cyan-900/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan-200">
-                                      Assurance
-                                    </span>
-                                  )}
-                                  <span className={`text-[10px] font-black uppercase tracking-widest ${statusLabel === 'Retourné' ? 'text-amber-300' : 'text-emerald-300'}`}>
-                                    {statusLabel}
-                                  </span>
+                              {recetteForm.isInsuranceSale && (
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap gap-1">
+                                    {insurerOptions.map((insurer) => (
+                                      <button key={insurer} type="button" onClick={() => setRecetteForm((prev) => ({ ...prev, insurerName: insurer }))} className={`rounded-md px-2 py-1 text-[10px] font-black ${recetteForm.insurerName === insurer ? 'bg-cyan-500 text-white' : 'bg-white text-slate-900'}`}>
+                                        {insurer}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {coverageRateOptions.map((rate) => (
+                                      <button key={rate} type="button" onClick={() => setRecetteForm((prev) => ({ ...prev, coverageRate: rate }))} className={`rounded-md px-2 py-1 text-[10px] font-black ${recetteForm.coverageRate === rate ? 'bg-emerald-600 text-white' : 'bg-white text-slate-900'}`}>
+                                        {rate}%
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <Input type="text" value={recetteForm.matricule} onChange={(e) => setRecetteForm((prev) => ({ ...prev, matricule: e.target.value }))} placeholder="N° de Bon" className="h-9 rounded-lg !border-2 !border-slate-300 !bg-white !text-black placeholder:!text-slate-400" />
+                                  <div className="text-xs font-bold">
+                                    <p className={`${flashPatientPart ? 'text-emerald-300' : 'text-emerald-200'}`}>Part Patient: {formatAmountGNF(patientPart)} GNF</p>
+                                    <p className="text-cyan-200">Part Assurance: {formatAmountGNF(insurancePart)} GNF</p>
+                                  </div>
                                 </div>
-                              </div>
-                              <p className="mt-1 text-xs text-slate-400">{new Date(tx.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                              )}
                             </div>
-                          );
-                        })
-                      )}
+                          )}
+
+                          <div className="mt-auto rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            <p>Alt+1 Espèces</p>
+                            <p>Alt+2 Orange Money</p>
+                            <p>Alt+3 Crédit / Dette</p>
+                            <p>Ctrl+Entrée Vérifier</p>
+                            <p>Entrée Confirmer</p>
+                          </div>
+                        </aside>
+                      </div>
                     </div>
-                  </aside>
                   </section>
                 ) : (
                   <section className="mt-8 rounded-lg border border-border bg-card p-6">
@@ -2499,87 +2348,73 @@ export function Dashboard() {
                 )}
 
                 {showCloseShiftForm && (
-                  <section className="mt-6 rounded-lg border border-destructive/30 bg-destructive/5 p-6">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h2 className="text-lg font-medium text-foreground">Clôturer la Garde</h2>
-                      <button onClick={() => setShowCloseShiftForm(false)} className="text-muted-foreground hover:text-foreground">
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+                    <div className="w-full max-w-2xl rounded-3xl border border-rose-400/40 bg-slate-900 p-6 text-white shadow-2xl">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h3 className="text-xl font-black uppercase tracking-[0.16em] text-rose-200">Vérification Fin de Garde</h3>
+                        <button
+                          type="button"
+                          onClick={() => setShowCloseShiftForm(false)}
+                          className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
 
-                    <div className="mb-4 rounded-lg border border-border bg-card p-4">
-                      <p className="text-sm text-muted-foreground">
-                        <strong>Espèces attendues :</strong> {transactions
-                          .filter(t => isCashMethod(String(t.method)))
-                          .reduce((sum, t) => {
-                            if (t.type === 'recette') return sum + getPatientCashPart(t);
-                            if (t.type === 'dépense' && t.status === 'approved') return sum - t.amount;
-                            return sum;
-                          }, 0)
-                          .toFixed(2)
-                          .replace('.', ',')} GNF
-                      </p>
-                    </div>
+                      <div className="grid gap-2 rounded-2xl border border-slate-700 bg-slate-800/60 p-4 text-sm md:grid-cols-2">
+                        <p>Total Espèces : <span className="font-black text-emerald-300">{formatAmountGNF(shiftCashTotal)} GNF</span></p>
+                        <p>Total Orange Money : <span className="font-black text-orange-300">{formatAmountGNF(shiftOrangeMoneyTotal)} GNF</span></p>
+                        <p>Total Dettes : <span className="font-black text-rose-300">{formatAmountGNF(shiftDebtTotal)} GNF</span></p>
+                        <p>Total Assurance : <span className="font-black text-cyan-300">{formatAmountGNF(shiftAssuranceClaimTotal)} GNF</span></p>
+                      </div>
 
-                    <form onSubmit={handleCloseShift} className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-foreground">Montant exact du tiroir (GNF) *</label>
+                      <div className="mt-4">
+                        <label className="block text-sm font-bold text-slate-200">Montant exact du tiroir (GNF) *</label>
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
                           required
-                          placeholder="Entrez le montant compté dans le tiroir"
                           value={closeShiftForm.actualCash}
                           onChange={(e) => {
                             setCloseShiftForm({ actualCash: e.target.value });
                             setCloseShiftFieldError(null);
                           }}
-                          className="mt-1"
+                          className="mt-2 h-12 rounded-xl border-slate-600 bg-white text-lg font-black text-slate-900"
                         />
-                        {closeShiftFieldError && (
-                          <p className="mt-2 text-xs font-semibold text-rose-600">{closeShiftFieldError}</p>
-                        )}
                       </div>
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <Button type="submit" variant="destructive" disabled={!isOnline} className="w-full">
-                            Valider la Clôture
-                          </Button>
-                        </div>
-                        <Button type="button" variant="outline" onClick={() => setShowCloseShiftForm(false)}>
-                          Annuler
-                        </Button>
-                      </div>
-                    </form>
-                  </section>
-                )}
 
-                {showCloseShiftConfirm && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4">
-                    <div className="w-full max-w-lg rounded-2xl border border-rose-400/40 bg-slate-900 p-6 text-white shadow-2xl">
-                      <h3 className="text-lg font-black uppercase tracking-wider text-rose-200">Confirmation Clôture</h3>
-                      <p className="mt-3 text-sm text-slate-200">
-                        Cette action termine la garde en cours et enregistre l&apos;écart de caisse. Voulez-vous confirmer la clôture ?
-                      </p>
-                      <p className="mt-3 rounded-xl border border-slate-700 bg-slate-800/70 px-4 py-3 text-sm">
-                        Montant saisi: <span className="font-black text-emerald-300">{formatAmountGNF(Number(closeShiftForm.actualCash || 0))} GNF</span>
-                      </p>
+                      <label className="mt-4 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/70 p-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={closeShiftConfirmed}
+                          onChange={(e) => setCloseShiftConfirmed(e.target.checked)}
+                          className="h-4 w-4 accent-rose-500"
+                        />
+                        Je confirme l&apos;exactitude du fond de caisse.
+                      </label>
+
+                      {closeShiftFieldError && (
+                        <p className="mt-2 text-xs font-semibold text-rose-300">{closeShiftFieldError}</p>
+                      )}
+
                       <div className="mt-5 flex gap-3">
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => setShowCloseShiftConfirm(false)}
+                          onClick={() => setShowCloseShiftForm(false)}
                           className="flex-1 border-slate-600 bg-transparent text-slate-100 hover:bg-slate-800"
                         >
                           Annuler
                         </Button>
                         <Button
                           type="button"
-                          onClick={() => void executeCloseShift()}
-                          className="flex-1 bg-rose-600 text-white hover:bg-rose-500"
+                          variant="destructive"
+                          disabled={!isOnline || closeShiftDelayLeft > 0 || !closeShiftConfirmed}
+                          onClick={() => void handleCloseShift()}
+                          className="flex-1 text-base font-black"
                         >
-                          Confirmer la Clôture
+                          {closeShiftDelayLeft > 0 ? `Confirmer la Fermeture (${closeShiftDelayLeft})` : 'Confirmer la Fermeture'}
                         </Button>
                       </div>
                     </div>

@@ -159,7 +159,7 @@ export function Sidebar() {
               end={/^\/dashboard(\?.*)?$/.test(to)}
               title={tooltip}
               className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
+                `group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200 ${isActive
                   ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-inner'
                   : 'text-slate-400 hover:bg-slate-900 hover:text-white'
                 }`
@@ -188,7 +188,7 @@ export function Sidebar() {
                       to={to}
                       title={tooltip}
                       className={({ isActive }) =>
-                        `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                        `group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200 ${
                           isActive
                             ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-inner'
                             : 'text-slate-400 hover:bg-slate-900 hover:text-white'
