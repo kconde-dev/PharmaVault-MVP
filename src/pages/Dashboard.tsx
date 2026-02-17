@@ -1498,6 +1498,17 @@ export function Dashboard() {
   const insurerOptions = ['CNAMGS', 'NSIA', 'LANALA', 'SAHAM', 'Activa', 'Autre'];
   const coverageRateOptions = [70, 80, 90, 100];
   const saleReady = Number.isFinite(amountValue) && amountValue > 0;
+  const isCashSelected = !isCreditSale && !recetteForm.isInsuranceSale && isCashMethod(String(recetteForm.method));
+  const isOrangeSelected = !isCreditSale && !recetteForm.isInsuranceSale && isOrangeMethod(String(recetteForm.method));
+  const isCreditSelected = isCreditSale;
+  const isAssuranceSelected = !isCreditSale && recetteForm.isInsuranceSale;
+  const activeSaleModeLabel = isCreditSelected
+    ? 'Crédit / Dette'
+    : isAssuranceSelected
+      ? 'Assurance'
+      : isOrangeSelected
+        ? 'Orange Money'
+        : 'Espèces';
   const isTerminalMode = (showTerminal || forcedTerminalView || isTerminalQueryView) && !closedShiftSummary;
   const isCashierFocusedTerminal = isCashier && isTerminalMode;
   const startOfToday = new Date();
@@ -1948,6 +1959,14 @@ export function Dashboard() {
                         <div>
                           <h2 className="text-xl font-black tracking-tight">Pharmacie Djoma</h2>
                           <p className="text-xs text-slate-200">Caissier: <span className="font-black text-white">{cashierName}</span></p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="rounded-full border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-200">
+                              Mode: {activeSaleModeLabel}
+                            </span>
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${saleReady ? 'border-cyan-300/40 bg-cyan-500/15 text-cyan-200' : 'border-slate-500/40 bg-slate-800 text-slate-300'}`}>
+                              {saleReady ? 'Prêt à vérifier' : 'Montant requis'}
+                            </span>
+                          </div>
                         </div>
                         <div className="hidden xl:block">
                           <TerminalTimePanel startedAt={currentShift.started_at} isOnline={isOnline} />
@@ -1975,6 +1994,14 @@ export function Dashboard() {
                       </div>
 
                       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[25%_50%_25%]">
+                        <div className="order-0 rounded-xl border border-slate-700 bg-slate-900/60 p-2 xl:hidden">
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="font-black text-cyan-100">Temps de garde: {formatElapsed(currentShift.started_at)}</span>
+                            <span className={`font-black ${isOnline ? 'text-emerald-300' : 'text-rose-300'}`}>
+                              {isOnline ? 'Online' : 'Offline'}
+                            </span>
+                          </div>
+                        </div>
                         <aside className="order-2 hidden min-h-0 flex-col gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 p-3 xl:order-1 xl:flex">
                           <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Mini Shift Info</p>
@@ -2000,6 +2027,12 @@ export function Dashboard() {
                         </aside>
 
                         <form onSubmit={handleAddRecette} className="order-1 flex min-h-0 flex-col gap-3 xl:order-2">
+                          <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/50 px-3 py-2">
+                            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-300">Montant de vente (GNF)</p>
+                            <p className="text-xs font-black text-emerald-200">
+                              {isCreditSale ? 'Encaissement: 0 GNF' : `À encaisser: ${formatAmountGNF(amountToCollect)} GNF`}
+                            </p>
+                          </div>
                           <Input
                             ref={amountInputRef}
                             type="number"
@@ -2024,30 +2057,30 @@ export function Dashboard() {
                             <button
                               type="button"
                               onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Espèces' }))}
-                              className={`min-h-12 rounded-xl px-4 text-sm font-black uppercase tracking-[0.12em] transition ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'Espèces' ? 'bg-emerald-500 text-slate-950' : 'bg-emerald-900/40 text-emerald-100 hover:bg-emerald-800/60'}`}
+                              className={`min-h-12 rounded-xl border px-4 text-sm font-black uppercase tracking-[0.12em] transition ${isCashSelected ? 'border-emerald-100 bg-emerald-500 text-slate-950 shadow-[0_0_0_2px_rgba(16,185,129,0.35)]' : 'border-emerald-300/30 bg-emerald-900/40 text-emerald-100 hover:bg-emerald-800/60'}`}
                             >
-                              Espèces
+                              💵 Espèces
                             </button>
                             <button
                               type="button"
                               onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Orange Money (Code Marchand)' }))}
-                              className={`min-h-12 rounded-xl px-4 text-sm font-black uppercase tracking-[0.1em] transition ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'Orange Money (Code Marchand)' ? 'bg-orange-500 text-slate-950' : 'bg-orange-900/40 text-orange-100 hover:bg-orange-800/60'}`}
+                              className={`min-h-12 rounded-xl border px-4 text-sm font-black uppercase tracking-[0.1em] transition ${isOrangeSelected ? 'border-orange-100 bg-orange-500 text-slate-950 shadow-[0_0_0_2px_rgba(249,115,22,0.35)]' : 'border-orange-300/30 bg-orange-900/40 text-orange-100 hover:bg-orange-800/60'}`}
                             >
-                              Orange Money
+                              📱 Orange Money
                             </button>
                             <button
                               type="button"
                               onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Crédit / Dette', isInsuranceSale: false }))}
-                              className={`min-h-12 rounded-xl px-4 text-sm font-black uppercase tracking-[0.1em] transition ${normalizePaymentMethodForDb(String(recetteForm.method)) === 'crédit_dette' ? 'bg-rose-500 text-white' : 'bg-rose-900/40 text-rose-100 hover:bg-rose-800/60'}`}
+                              className={`min-h-12 rounded-xl border px-4 text-sm font-black uppercase tracking-[0.1em] transition ${isCreditSelected ? 'border-rose-100 bg-rose-500 text-white shadow-[0_0_0_2px_rgba(244,63,94,0.35)]' : 'border-rose-300/30 bg-rose-900/40 text-rose-100 hover:bg-rose-800/60'}`}
                             >
-                              Crédit
+                              💳 Crédit
                             </button>
                             <button
                               type="button"
                               onClick={() => setRecetteForm((prev) => ({ ...prev, method: 'Espèces', isInsuranceSale: !prev.isInsuranceSale }))}
-                              className={`min-h-12 rounded-xl px-4 text-sm font-black uppercase tracking-[0.1em] transition ${recetteForm.isInsuranceSale ? 'bg-cyan-500 text-slate-950' : 'bg-cyan-900/40 text-cyan-100 hover:bg-cyan-800/60'}`}
+                              className={`min-h-12 rounded-xl border px-4 text-sm font-black uppercase tracking-[0.1em] transition ${isAssuranceSelected ? 'border-cyan-100 bg-cyan-500 text-slate-950 shadow-[0_0_0_2px_rgba(6,182,212,0.35)]' : 'border-cyan-300/30 bg-cyan-900/40 text-cyan-100 hover:bg-cyan-800/60'}`}
                             >
-                              Assurance
+                              🏥 Assurance
                             </button>
                           </div>
 
@@ -2119,10 +2152,10 @@ export function Dashboard() {
 
                           <Button
                             type="submit"
-                            disabled={!isOnline}
-                            className={`h-16 rounded-2xl text-lg font-black uppercase tracking-[0.15em] ${saleReady ? 'animate-pulse bg-emerald-500 text-slate-950 hover:bg-emerald-400' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'}`}
+                            disabled={!isOnline || !saleReady}
+                            className={`h-16 rounded-2xl text-lg font-black uppercase tracking-[0.15em] ${saleReady && isOnline ? 'animate-pulse bg-emerald-500 text-slate-950 hover:bg-emerald-400' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
                           >
-                            Valider
+                            {saleReady ? 'Vérifier la Vente (Entrée)' : 'Saisir un montant'}
                           </Button>
                         </form>
 
@@ -2177,6 +2210,7 @@ export function Dashboard() {
                           )}
 
                           <div className="mt-auto rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            <p className="mb-1 text-[9px] tracking-[0.18em] text-slate-500">Raccourcis Clavier</p>
                             <p>Alt+1 Espèces</p>
                             <p>Alt+2 Orange Money</p>
                             <p>Alt+3 Crédit / Dette</p>

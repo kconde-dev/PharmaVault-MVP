@@ -21,6 +21,8 @@ export interface UseAuthResult {
 
 const AuthContext = createContext<UseAuthResult | undefined>(undefined);
 const LAST_ROLE_STORAGE_KEY = 'pharmavault.last_role';
+const AUTH_SESSION_TIMEOUT_MS = 5000;
+const AUTH_USER_FALLBACK_TIMEOUT_MS = 4500;
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -142,10 +144,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const initializeAuth = async () => {
       try {
         setLoading(true);
-        // getSession is faster and less likely to trigger AbortErrors than getUser for initial state
+        // Primary bootstrap: getSession (fast path).
         const { data: { session } } = await withTimeout(
           supabase.auth.getSession(),
-          3000,
+          AUTH_SESSION_TIMEOUT_MS,
           'auth session lookup'
         );
 
@@ -156,6 +158,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (isAbortError(err)) {
           // Expected during effect teardown in React StrictMode.
           return;
+        }
+        // Graceful fallback for slow connections: try getUser before failing init.
+        if (isTimeoutError(err)) {
+          try {
+            const { data: userData, error: userErr } = await withTimeout(
+              supabase.auth.getUser(),
+              AUTH_USER_FALLBACK_TIMEOUT_MS,
+              'auth user fallback lookup'
+            );
+            if (userErr) throw userErr;
+            if (!mounted) return;
+            await syncAuthUser(userData.user ?? null);
+            return;
+          } catch (fallbackErr) {
+            if (mounted) {
+              // Keep UI usable even when auth bootstrap is slow/unavailable.
+              setError(null);
+              setUser(null);
+              setRole(null);
+              setLoading(false);
+            }
+            return;
+          }
         }
 
         console.error('Auth initialization error:', err);
