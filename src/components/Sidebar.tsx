@@ -138,81 +138,83 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-border/50 bg-slate-950 text-slate-300">
-      <div className="flex h-20 items-center gap-3 px-6 border-b border-slate-800/50">
+    <aside className="flex h-[100vh] w-64 flex-col border-r border-border/50 bg-slate-950 text-slate-300">
+      <div className="flex h-20 shrink-0 items-center gap-3 border-b border-slate-800/50 px-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl pharmacy-gradient text-white shadow-lg shadow-emerald-500/20">
           <ShieldCheck className="h-6 w-6" aria-hidden />
         </div>
         <div className="flex flex-col">
-          <span className="font-bold tracking-tight text-white leading-none">{settings.pharmacy.name}</span>
-          <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Gestion</span>
+          <span className="leading-none font-bold tracking-tight text-white">{settings.pharmacy.name}</span>
+          <span className="mt-1 text-[9px] font-bold uppercase tracking-widest text-emerald-500">Gestion</span>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 p-4 mt-4" aria-label="Navigation principale">
-        <p className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Menu Principal</p>
-        {navItems.map(({ to, label, tooltip, icon: Icon }) => (
-          // Keep dashboard item exact-match active even when query params are present.
-          <NavLink
-            key={to}
-            to={to}
-            end={/^\/dashboard(\?.*)?$/.test(to)}
-            title={tooltip}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 group ${isActive
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner'
-                : 'text-slate-400 hover:bg-slate-900 hover:text-white'
-              }`
-            }
-          >
-            <Icon className={`h-5 w-5 shrink-0 transition-transform group-hover:scale-110 ${to === '/dashboard' ? 'text-emerald-500' : ''}`} aria-hidden />
-            {label}
-          </NavLink>
-        ))}
-        {isAdmin && (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => setIsMoreOpen((prev) => !prev)}
-              className="flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-white"
+      <div className="sidebar-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <nav className="space-y-1 px-3 pb-3 pt-3" aria-label="Navigation principale">
+          <p className="mb-2 px-2 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">Menu Principal</p>
+          {navItems.map(({ to, label, tooltip, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={/^\/dashboard(\?.*)?$/.test(to)}
+              title={tooltip}
+              className={({ isActive }) =>
+                `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
+                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-inner'
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-white'
+                }`
+              }
             >
-              Plus
-              <ChevronDown className={`h-4 w-4 transition-transform ${isMoreExpanded ? 'rotate-180' : ''}`} aria-hidden />
-            </button>
-            {isMoreExpanded && (
-              <div className="mt-2 space-y-1">
-                {adminMoreNavItems.map(({ to, label, tooltip, icon: Icon }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    title={tooltip}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 group ${
-                        isActive
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner'
-                          : 'text-slate-400 hover:bg-slate-900 hover:text-white'
-                      }`
-                    }
-                  >
-                    <Icon className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" aria-hidden />
-                    {label}
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </nav>
+              <Icon className={`h-5 w-5 shrink-0 transition-transform group-hover:scale-110 ${to === '/dashboard' ? 'text-emerald-500' : ''}`} aria-hidden />
+              {label}
+            </NavLink>
+          ))}
 
-      <div className="mt-auto border-t border-slate-800/50 p-6 bg-slate-950/50">
-        <div className={`mb-4 flex items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${
+          {isAdmin && (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setIsMoreOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white"
+              >
+                Plus
+                <ChevronDown className={`h-4 w-4 transition-transform ${isMoreExpanded ? 'rotate-180' : ''}`} aria-hidden />
+              </button>
+              {isMoreExpanded && (
+                <div className="mt-2 space-y-1">
+                  {adminMoreNavItems.map(({ to, label, tooltip, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      title={tooltip}
+                      className={({ isActive }) =>
+                        `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                          isActive
+                            ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-inner'
+                            : 'text-slate-400 hover:bg-slate-900 hover:text-white'
+                        }`
+                      }
+                    >
+                      <Icon className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" aria-hidden />
+                      {label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </nav>
+      </div>
+
+      <div className="mt-auto shrink-0 border-t border-slate-800/50 bg-slate-950/50 px-4 pb-4 pt-3">
+        <div className={`mb-3 flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] ${
           systemHealth === 'healthy'
             ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
             : systemHealth === 'degraded'
               ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
               : 'border-slate-700 bg-slate-900 text-slate-400'
         }`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
             systemHealth === 'healthy'
               ? 'bg-emerald-400'
               : systemHealth === 'degraded'
@@ -227,9 +229,10 @@ export function Sidebar() {
                 : 'Vérification système'}
           </span>
         </div>
-        <div className="mb-6 flex items-center gap-3">
+
+        <div className="mb-3 flex items-center gap-2.5">
           <div className="relative">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-xs uppercase shadow-inner">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/20 text-xs font-bold uppercase text-emerald-400 shadow-inner">
               {(user?.user_metadata?.display_name?.charAt(0) || user?.email?.charAt(0)) || 'U'}
             </div>
             <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-950 ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
@@ -238,15 +241,16 @@ export function Sidebar() {
             <span className="truncate text-xs font-semibold text-white">
               {user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Utilisateur'}
             </span>
-            <span className="truncate text-[10px] text-slate-500 font-medium capitalize">
+            <span className="truncate text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
               {role || 'Session active'}
             </span>
           </div>
         </div>
+
         <Button
           variant="ghost"
           onClick={handleLogout}
-          className="w-full justify-start gap-3 px-4 py-2 text-xs font-semibold text-slate-400 hover:bg-rose-500/10 hover:text-rose-400 rounded-xl border border-transparent hover:border-rose-500/20 transition-all"
+          className="w-full justify-start gap-3 rounded-xl border border-transparent px-3 py-2 text-xs font-semibold text-slate-400 transition-all hover:border-rose-500/20 hover:bg-rose-500/10 hover:text-rose-400"
         >
           <LogOut className="h-4 w-4" aria-hidden />
           <span>Déconnexion</span>
