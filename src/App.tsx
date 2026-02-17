@@ -8,6 +8,7 @@ import DailyLedger from '@/pages/DailyLedger';
 import Gardes from '@/pages/Gardes';
 import Depenses from '@/pages/Depenses';
 import Assurances from '@/pages/Assurances';
+import CreditDebts from '@/pages/CreditDebts';
 import InsuranceLedger from '@/pages/InsuranceLedger';
 import InsuranceClaimReport from '@/pages/InsuranceClaimReport';
 import HelpCenter from '@/pages/HelpCenter';
@@ -18,7 +19,6 @@ import CustomAppsSolution from '@/pages/CustomAppsSolution';
 import SafeGuardSolution from '@/pages/SafeGuardSolution';
 import Parametres from '@/pages/Parametres';
 import Personnel from '@/pages/Personnel';
-import Intelligence from '@/pages/Intelligence';
 
 function App() {
   return (
@@ -42,8 +42,14 @@ function App() {
           }
         />
         <Route path="daily-ledger" element={<DailyLedger />} />
-        <Route path="help" element={<HelpCenter />} />
-        <Route path="intelligence" element={<Intelligence />} />
+        <Route
+          path="help"
+          element={
+            <ProtectedRoute requiredRole="administrator">
+              <HelpCenter />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="gardes"
           element={
@@ -54,6 +60,14 @@ function App() {
         />
         <Route path="depenses" element={<Depenses />} />
         <Route path="assurances" element={<Assurances />} />
+        <Route
+          path="dettes"
+          element={
+            <ProtectedRoute requiredRole="administrator">
+              <CreditDebts />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="assurances/ledger"
           element={

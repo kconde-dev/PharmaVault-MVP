@@ -2,16 +2,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { useConnection } from '@/context/ConnectionContext';
 import { AlertCircle, Clock, Plus, Trash2, CheckCircle, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import AppToast, { type ToastVariant } from '@/components/AppToast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import type { Shift, Transaction, PaymentMethod } from '@/lib/database.types';
 import { formatSupabaseError } from '@/lib/supabaseError';
-
-function toModernPaymentMethod(method: PaymentMethod): 'cash' | 'mobile_money' | 'card' {
-  if (method === 'espèces' || method === 'Espèces') return 'cash';
-  if (method === 'orange_money' || method === 'Orange Money (Code Marchand)') return 'mobile_money';
-  return 'card';
-}
 
 function normalizeMethodLabel(method: string): PaymentMethod {
   if (method === 'Espèces' || method === 'Orange Money (Code Marchand)' || method === 'espèces' || method === 'orange_money') {
@@ -25,15 +20,52 @@ function isExpenseType(type: string): boolean {
   return value === 'dépense' || value === 'depense' || value === 'expense';
 }
 
+type ApprovalQueueFilter = 'urgent' | 'oldest' | 'high_amount';
+
+function getAgeInMinutes(isoDate: string): number {
+  const createdAt = new Date(isoDate).getTime();
+  if (!Number.isFinite(createdAt)) return 0;
+  const diffMs = Date.now() - createdAt;
+  return Math.max(0, Math.floor(diffMs / (1000 * 60)));
+}
+
+function formatAgeBadge(isoDate: string): string {
+  const minutes = getAgeInMinutes(isoDate);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `${days} j`;
+}
+
+function isUrgentExpense(amount: number, createdAt: string): boolean {
+  return amount >= 500000 || getAgeInMinutes(createdAt) >= 120;
+}
+
+function ownerLabel(rawOwner: string): string {
+  const value = String(rawOwner || '').trim();
+  if (!value) return 'Inconnu';
+  if (value.includes('@')) return value.split('@')[0];
+  return value.slice(0, 8);
+}
+
 export function Depenses() {
   const { user, role } = useAuth();
   const { isOnline } = useConnection();
   const [currentShift, setCurrentShift] = useState<Shift | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [transactionSchema, setTransactionSchema] = useState<'legacy' | 'modern'>('legacy');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ variant: ToastVariant; title: string; message: string; hint?: string } | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; description?: string }>({});
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'delete' | 'approve' | 'reject';
+    id: string;
+    amount: number;
+    description: string;
+  } | null>(null);
+  const [queueFilter, setQueueFilter] = useState<ApprovalQueueFilter>('urgent');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -69,10 +101,6 @@ export function Depenses() {
     }
 
     const rows = (data || []) as Array<Transaction & { type: string; payment_method?: string; cashier_id?: string; is_approved?: boolean; shift_id?: string }>;
-    const hasLegacyShape =
-      rows.length === 0
-        || rows.some((row) => typeof row.shift_id === 'string' || typeof row.method === 'string');
-    setTransactionSchema(hasLegacyShape ? 'legacy' : 'modern');
     const normalized = rows
       .filter((t) => isExpenseType(String(t.type || '')))
       .map((t) => ({
@@ -144,31 +172,39 @@ export function Depenses() {
     };
   }, [fetchActiveShift, user]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
 
     if (!user || !currentShift) {
       setError('Une garde active est requise pour enregistrer une dépense.');
       return;
     }
 
-    if (!formData.amount || isNaN(parseFloat(formData.amount))) {
-      setError('Veuillez entrer un montant valide.');
+    const amountValue = Number.parseFloat(formData.amount);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setFieldErrors((prev) => ({ ...prev, amount: 'Entrez un montant supérieur à zéro.' }));
       return;
     }
 
-    if (!formData.description.trim()) {
-      setError('Veuillez entrer une description.');
+    if (formData.description.trim().length < 3) {
+      setFieldErrors((prev) => ({ ...prev, description: 'Décrivez la dépense en au moins 3 caractères.' }));
       return;
     }
 
     setIsLoading(true);
     const payload = {
       shift_id: currentShift.id,
-      amount: parseFloat(formData.amount),
+      amount: amountValue,
       description: formData.description,
       type: 'Dépense',
       category: 'Dépense',
@@ -184,6 +220,12 @@ export function Depenses() {
 
     if (insertError) {
       setError(formatSupabaseError(insertError, 'Erreur lors de l\'enregistrement de la dépense.'));
+      setToast({
+        variant: 'error',
+        title: 'Echec enregistrement',
+        message: 'La dépense n’a pas été enregistrée.',
+        hint: 'Vérifiez la connexion puis réessayez.',
+      });
       return;
     }
 
@@ -191,79 +233,126 @@ export function Depenses() {
     setFormData({ amount: '', description: '', method: 'Espèces' });
     setShowForm(false);
     await refreshTransactions();
+    setToast({
+      variant: 'success',
+      title: 'Depense enregistree',
+      message: 'La sortie de caisse a été ajoutée.',
+      hint: isAdmin ? 'Vérifiez la file d’approbation.' : 'Attendez la validation admin.',
+    });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette dépense ?')) return;
+  const requestAction = (id: string, type: 'delete' | 'approve' | 'reject') => {
+    const tx = transactions.find((item) => item.id === id);
+    if (!tx) return;
+    setPendingAction({
+      type,
+      id,
+      amount: tx.amount,
+      description: tx.description,
+    });
+  };
 
+  const executePendingAction = async () => {
+    if (!pendingAction) return;
     setError(null);
-    const { error: deleteError } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id);
+    const action = pendingAction;
+    setPendingAction(null);
 
-    if (deleteError) {
-      setError(formatSupabaseError(deleteError, 'Erreur lors de la suppression.'));
+    if (action.type === 'delete') {
+      const { error: deleteError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', action.id);
+
+      if (deleteError) {
+        setError(formatSupabaseError(deleteError, 'Erreur lors de la suppression.'));
+        setToast({
+          variant: 'error',
+          title: 'Suppression echouee',
+          message: 'Impossible de supprimer cette dépense.',
+        });
+        return;
+      }
+
+      await refreshTransactions();
+      setToast({
+        variant: 'success',
+        title: 'Depense supprimee',
+        message: 'L’élément a été retiré du registre.',
+      });
       return;
     }
 
-    await refreshTransactions();
-  };
-
-  const handleApprove = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir approuver cette dépense ?')) return;
-
-    setError(null);
-    const updatePayload = {
-      status: 'approved',
-      is_approved: true,
-      approved_by: user?.id,
-      approved_at: new Date().toISOString(),
-    };
+    const updatePayload = action.type === 'approve'
+      ? {
+          status: 'approved',
+          is_approved: true,
+          approved_by: user?.id,
+          approved_at: new Date().toISOString(),
+        }
+      : {
+          status: 'rejected',
+          is_approved: false,
+          rejected_by: user?.id,
+          rejected_at: new Date().toISOString(),
+        };
 
     const { error: updateError } = await supabase
       .from('transactions')
       .update(updatePayload)
-      .eq('id', id);
+      .eq('id', action.id);
 
     if (updateError) {
-      setError(formatSupabaseError(updateError, 'Erreur lors de l\'approbation.'));
+      setError(
+        formatSupabaseError(
+          updateError,
+          action.type === 'approve' ? 'Erreur lors de l\'approbation.' : 'Erreur lors du rejet.'
+        )
+      );
+      setToast({
+        variant: 'error',
+        title: action.type === 'approve' ? 'Validation echouee' : 'Rejet echoue',
+        message: 'La mise à jour du statut a échoué.',
+      });
       return;
     }
 
     await refreshTransactions();
-  };
-
-  const handleReject = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir rejeter cette dépense ?')) return;
-
-    setError(null);
-    const updatePayload = {
-      status: 'rejected',
-      is_approved: false,
-      rejected_by: user?.id,
-      rejected_at: new Date().toISOString(),
-    };
-
-    const { error: updateError } = await supabase
-      .from('transactions')
-      .update(updatePayload)
-      .eq('id', id);
-
-    if (updateError) {
-      setError(formatSupabaseError(updateError, 'Erreur lors du rejet.'));
-      return;
-    }
-
-    await refreshTransactions();
+    setToast({
+      variant: 'success',
+      title: action.type === 'approve' ? 'Depense validee' : 'Depense rejetee',
+      message: action.type === 'approve' ? 'La demande est approuvée.' : 'La demande est rejetée.',
+      hint: 'Le statut est synchronisé dans le journal.',
+    });
   };
 
   const totalExpenses = transactions.reduce((sum, t) => sum + t.amount, 0);
   const pendingExpenses = transactions.filter(t => t.status === 'pending').length;
   const approvedExpenses = transactions.filter(t => t.status === 'approved').length;
+  const pendingQueue = transactions.filter((t) => t.status === 'pending');
+  const filteredPendingQueue = [...pendingQueue].sort((a, b) => {
+    if (queueFilter === 'oldest') {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
+    if (queueFilter === 'high_amount') {
+      return b.amount - a.amount;
+    }
+    const urgencyA = Number(isUrgentExpense(a.amount, a.created_at));
+    const urgencyB = Number(isUrgentExpense(b.amount, b.created_at));
+    if (urgencyA !== urgencyB) return urgencyB - urgencyA;
+    return getAgeInMinutes(b.created_at) - getAgeInMinutes(a.created_at);
+  });
 
   return (
     <div className="p-6 lg:p-10 space-y-10">
+      <AppToast
+        open={Boolean(toast)}
+        variant={toast?.variant || 'success'}
+        title={toast?.title || ''}
+        message={toast?.message || ''}
+        hint={toast?.hint}
+        onClose={() => setToast(null)}
+      />
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -356,19 +445,66 @@ export function Depenses() {
             </span>
           </div>
 
-          {transactions.filter(t => t.status === 'pending').length === 0 ? (
+          <div className="mb-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setQueueFilter('urgent')}
+              className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition ${
+                queueFilter === 'urgent'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50'
+              }`}
+            >
+              Urgent
+            </button>
+            <button
+              type="button"
+              onClick={() => setQueueFilter('oldest')}
+              className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition ${
+                queueFilter === 'oldest'
+                  ? 'bg-indigo-700 text-white'
+                  : 'bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50'
+              }`}
+            >
+              Oldest
+            </button>
+            <button
+              type="button"
+              onClick={() => setQueueFilter('high_amount')}
+              className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition ${
+                queueFilter === 'high_amount'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-white text-amber-700 border border-amber-200 hover:bg-amber-50'
+              }`}
+            >
+              High amount
+            </button>
+          </div>
+
+          {filteredPendingQueue.length === 0 ? (
             <div className="text-center py-6 bg-white/40 rounded-2xl border border-dashed border-indigo-200">
               <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Aucune demande en attente de traitement</p>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              {transactions
-                .filter(t => t.status === 'pending')
-                .map((tx) => (
+              {filteredPendingQueue.map((tx) => (
                   <div
                     key={tx.id}
                     className="group relative overflow-hidden flex flex-col justify-between rounded-2xl bg-white p-5 border border-indigo-100 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 transition-all duration-300"
                   >
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                        En attente
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                        Âge: {formatAgeBadge(tx.created_at)}
+                      </span>
+                      {isUrgentExpense(tx.amount, tx.created_at) && (
+                        <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-rose-700">
+                          Urgent
+                        </span>
+                      )}
+                    </div>
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">{tx.method}</p>
@@ -380,18 +516,18 @@ export function Depenses() {
                     </div>
 
                     <div className="flex items-center justify-between border-t border-slate-50 pt-4">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">
-                        Emis par: {tx.created_by?.split('-')[0] || 'Inconnu'}
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        Propriétaire: {ownerLabel(tx.created_by)}
                       </p>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleReject(tx.id)}
+                          onClick={() => requestAction(tx.id, 'reject')}
                           className="px-3 py-1.5 text-[10px] font-black text-rose-500 hover:text-white hover:bg-rose-500 rounded-lg transition-all"
                         >
                           REJETER
                         </button>
                         <button
-                          onClick={() => handleApprove(tx.id)}
+                          onClick={() => requestAction(tx.id, 'approve')}
                           className="px-4 py-1.5 text-[10px] font-black text-white bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 rounded-lg transition-all"
                         >
                           CAPTURER & VALIDER
@@ -447,11 +583,13 @@ export function Depenses() {
                   required
                   placeholder="Ex: 100000"
                   value={formData.amount}
-                  onChange={(e) =>
-                    setFormData({ ...formData, amount: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, amount: e.target.value });
+                    setFieldErrors((prev) => ({ ...prev, amount: undefined }));
+                  }}
                   className="w-full h-12 bg-slate-100 border border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
+                {fieldErrors.amount && <p className="text-xs font-semibold text-rose-600">{fieldErrors.amount}</p>}
               </div>
 
               <div className="space-y-2">
@@ -463,11 +601,13 @@ export function Depenses() {
                   required
                   placeholder="Ex: Facture Electricité"
                   value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, description: e.target.value });
+                    setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                  }}
                   className="w-full h-12 bg-slate-100 border border-slate-200 rounded-xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
+                {fieldErrors.description && <p className="text-xs font-semibold text-rose-600">{fieldErrors.description}</p>}
               </div>
 
               <div className="space-y-2">
@@ -592,7 +732,7 @@ export function Depenses() {
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         {isAdmin && tx.status === 'pending' && (
                           <button
-                            onClick={() => handleApprove(tx.id)}
+                            onClick={() => requestAction(tx.id, 'approve')}
                             className="h-8 w-8 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
                             title="Approuver"
                           >
@@ -601,7 +741,7 @@ export function Depenses() {
                         )}
                         {(!isAdmin || tx.status === 'pending') && (
                           <button
-                            onClick={() => (isAdmin ? handleReject(tx.id) : handleDelete(tx.id))}
+                            onClick={() => requestAction(tx.id, isAdmin ? 'reject' : 'delete')}
                             className="h-8 w-8 flex items-center justify-center rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white transition-all shadow-sm"
                             title={isAdmin ? 'Rejeter' : 'Supprimer'}
                           >
@@ -617,6 +757,48 @@ export function Depenses() {
           </div>
         )}
       </div>
+
+      {pendingAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-900">
+              {pendingAction.type === 'approve'
+                ? 'Confirmer la validation'
+                : pendingAction.type === 'reject'
+                  ? 'Confirmer le rejet'
+                  : 'Confirmer la suppression'}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {pendingAction.type === 'approve'
+                ? 'Cette dépense sera marquée comme validée.'
+                : pendingAction.type === 'reject'
+                  ? 'Cette dépense sera marquée comme rejetée.'
+                  : 'Cette dépense sera supprimée définitivement.'}
+            </p>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Dépense ciblée</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{pendingAction.description}</p>
+              <p className="text-sm font-black text-slate-800">{pendingAction.amount.toLocaleString('fr-FR')} GNF</p>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <Button type="button" variant="outline" onClick={() => setPendingAction(null)} className="flex-1">
+                Annuler
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void executePendingAction()}
+                className={`flex-1 ${
+                  pendingAction.type === 'approve'
+                    ? 'bg-emerald-600 hover:bg-emerald-500'
+                    : 'bg-rose-600 hover:bg-rose-500'
+                } text-white`}
+              >
+                Confirmer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

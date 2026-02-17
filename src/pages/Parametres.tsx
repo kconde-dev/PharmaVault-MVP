@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { getSettings, saveSettings, loadSettingsFromDatabase, AppSettings } from '@/lib/settings';
 import { checkSupabaseConnection } from '@/lib/heartbeat';
+import { getCreditSchemaReadiness } from '@/lib/creditSchema';
 import { formatSupabaseError } from '@/lib/supabaseError';
 
 export function Parametres() {
@@ -36,6 +37,8 @@ export function Parametres() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [smsTestStatus, setSmsTestStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const [smsTestMessage, setSmsTestMessage] = useState<string>('');
+  const [creditCheckStatus, setCreditCheckStatus] = useState<'idle' | 'checking' | 'ready' | 'missing' | 'error'>('idle');
+  const [creditCheckMessage, setCreditCheckMessage] = useState<string>('');
 
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
@@ -127,6 +130,30 @@ export function Parametres() {
     await new Promise((resolve) => setTimeout(resolve, 900));
     setSmsTestStatus('sent');
     setSmsTestMessage(`SMS de test envoye vers ${ownerPhone}.`);
+  };
+
+  const handleCreditSchemaCheck = async () => {
+    if (!isAdmin) return;
+    setCreditCheckStatus('checking');
+    setCreditCheckMessage('');
+    try {
+      const status = await getCreditSchemaReadiness(true);
+      if (status.status === 'ready') {
+        setCreditCheckStatus('ready');
+        setCreditCheckMessage('Module crédit prêt.');
+        return;
+      }
+      if (status.status === 'missing') {
+        setCreditCheckStatus('missing');
+        setCreditCheckMessage(status.details || 'Migration crédit manquante.');
+        return;
+      }
+      setCreditCheckStatus('error');
+      setCreditCheckMessage(status.details || 'Vérification impossible.');
+    } catch (err) {
+      setCreditCheckStatus('error');
+      setCreditCheckMessage(err instanceof Error ? err.message : 'Vérification impossible.');
+    }
   };
 
   return (
@@ -481,6 +508,32 @@ export function Parametres() {
                 <RefreshCcw className="h-3 w-3" />
                 Analyser la Latence Réseau
               </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!isAdmin || creditCheckStatus === 'checking'}
+                className="w-full h-12 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border-amber-300 text-amber-700 hover:bg-amber-100 hover:border-amber-400 transition-all gap-3 disabled:opacity-60"
+                onClick={() => void handleCreditSchemaCheck()}
+              >
+                <Database className={`h-3 w-3 ${creditCheckStatus === 'checking' ? 'animate-pulse' : ''}`} />
+                Vérifier le Module Crédit
+              </Button>
+              {creditCheckStatus === 'ready' && (
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                  ✓ {creditCheckMessage}
+                </p>
+              )}
+              {creditCheckStatus === 'missing' && (
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                  ⚠️ {creditCheckMessage}
+                </p>
+              )}
+              {creditCheckStatus === 'error' && (
+                <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">
+                  ⚠️ {creditCheckMessage}
+                </p>
+              )}
             </div>
           </section>
         </div>

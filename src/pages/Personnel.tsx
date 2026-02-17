@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { RotateCcw, Trash2, AlertCircle, Loader, UserPlus, Users, ShieldCheck, Mail, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import AppToast, { type ToastVariant } from '@/components/AppToast';
 import { useAuth } from '@/hooks/useAuth';
 import { useConnection } from '@/context/ConnectionContext';
 import {
@@ -33,12 +34,13 @@ export const Personnel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ variant: ToastVariant; title: string; message: string; hint?: string } | null>(null);
   const [formData, setFormData] = useState<AddEmployeeForm>({
     username: '',
     accessCode: '',
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingUserDelete, setPendingUserDelete] = useState<{ id: string; username: string } | null>(null);
 
   const loadStaff = async () => {
     try {
@@ -61,10 +63,15 @@ export const Personnel: React.FC = () => {
     loadStaff();
   }, [role]);
 
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 2500);
+  const showToast = (variant: ToastVariant, title: string, message: string, hint?: string) => {
+    setToast({ variant, title, message, hint });
   };
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,7 +92,7 @@ export const Personnel: React.FC = () => {
         role: 'staff',
       });
       setSuccessMessage(`Compte "${formData.username}" activé avec succès`);
-      showToast('Nouveau membre créé');
+      showToast('success', 'Utilisateur cree', 'Nouveau membre enregistré.', 'Communiquez le PIN de manière sécurisée.');
       setFormData({ username: '', accessCode: '' });
       setShowModal(false);
       await loadStaff();
@@ -98,13 +105,12 @@ export const Personnel: React.FC = () => {
   };
 
   const handleResetPassword = async (userId: string, username: string) => {
-    if (!window.confirm(`Confirmer la réinitialisation des accès pour "${username}" ?`)) return;
     try {
       setError(null);
       const member = staff.find((s) => s.id === userId);
       await resetUserPassword(userId, member?.email);
       setSuccessMessage(`Protocole de réinitialisation lancé pour ${username}`);
-      showToast(`Réinitialisation lancée pour ${username}`);
+      showToast('success', 'Reinitialisation lancee', `Accès relancé pour ${username}.`);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Echec du protocole');
@@ -112,12 +118,18 @@ export const Personnel: React.FC = () => {
   };
 
   const handleDeleteUser = async (userId: string, username: string) => {
-    if (!window.confirm(`RÉVOCATION DÉFINITIVE de "${username}" ? Cette action est irréversible.`)) return;
+    setPendingUserDelete({ id: userId, username });
+  };
+
+  const executeDeleteUser = async () => {
+    if (!pendingUserDelete) return;
+    const { id, username } = pendingUserDelete;
+    setPendingUserDelete(null);
     try {
       setError(null);
-      await deleteUser(userId);
+      await deleteUser(id);
       setSuccessMessage(`Session "${username}" révoquée définitivement`);
-      showToast(`${username} supprimé`);
+      showToast('success', 'Compte revoque', `${username} retiré de l'application.`);
       await loadStaff();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -128,12 +140,11 @@ export const Personnel: React.FC = () => {
   const handleChangeRole = async (userId: string, currentRole: string, requestedRole: 'administrator' | 'staff', username: string) => {
     if (currentRole === requestedRole) return;
     const newRole = requestedRole;
-    if (!window.confirm(`Mettre à jour les privilèges de "${username}" vers "${newRole.toUpperCase()}" ?`)) return;
     try {
       setError(null);
       await updateUserRole(userId, newRole as 'administrator' | 'staff');
       setSuccessMessage(`Privilèges mis à jour pour ${username}`);
-      showToast(`Rôle mis à jour: ${username}`);
+      showToast('success', 'Role mis a jour', `Niveau d'accès actualisé pour ${username}.`);
       await loadStaff();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -143,11 +154,14 @@ export const Personnel: React.FC = () => {
 
   return (
     <div className="p-6 lg:p-10 space-y-10">
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[80] rounded-xl bg-emerald-600 text-white px-4 py-3 shadow-xl text-xs font-black uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
-          {toastMessage}
-        </div>
-      )}
+      <AppToast
+        open={Boolean(toast)}
+        variant={toast?.variant || 'success'}
+        title={toast?.title || ''}
+        message={toast?.message || ''}
+        hint={toast?.hint}
+        onClose={() => setToast(null)}
+      />
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -279,6 +293,25 @@ export const Personnel: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {pendingUserDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-rose-300 bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-900">Confirmer la révocation</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Cette action est irréversible. Le compte <span className="font-black text-slate-900">{pendingUserDelete.username}</span> sera retiré de l&apos;application.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <Button type="button" variant="outline" onClick={() => setPendingUserDelete(null)} className="flex-1">
+                Annuler
+              </Button>
+              <Button type="button" onClick={() => void executeDeleteUser()} className="flex-1 bg-rose-600 text-white hover:bg-rose-500">
+                Révoquer définitivement
+              </Button>
+            </div>
           </div>
         </div>
       )}

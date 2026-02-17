@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { getSettings, loadSettingsFromDatabase, SETTINGS_UPDATED_EVENT, type AppSettings } from '@/lib/settings';
 
+const LAST_ROLE_STORAGE_KEY = 'pharmavault.last_role';
+
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<AppSettings>(getSettings());
@@ -54,6 +56,40 @@ export const Login: React.FC = () => {
         ? "Identifiants refusés. Vérifiez votre nom et code PIN."
         : signInError.message;
       setError(message);
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const authUser = sessionData.session?.user;
+
+    if (!authUser) {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('Error loading profile role on login:', profileError);
+      if (normalizedUsername === 'admin') {
+        window.localStorage.setItem(LAST_ROLE_STORAGE_KEY, 'administrator');
+      }
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    const normalizedRole = String(profileData?.role || '').toLowerCase().trim();
+    if (normalizedRole === 'administrator' || normalizedRole === 'admin') {
+      window.localStorage.setItem(LAST_ROLE_STORAGE_KEY, 'administrator');
+    } else if (normalizedRole === 'cashier' || normalizedRole === 'staff') {
+      window.localStorage.setItem(LAST_ROLE_STORAGE_KEY, 'cashier');
+    }
+    if (normalizedRole === 'cashier' || normalizedRole === 'staff') {
+      navigate('/dashboard?view=terminal', { replace: true });
       return;
     }
 

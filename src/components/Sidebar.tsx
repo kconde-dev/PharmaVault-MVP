@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
@@ -7,17 +7,20 @@ import {
   CircleHelp,
   Info,
   Grid2x2,
-  BrainCircuit,
   BookOpenCheck,
   ShieldCheck,
   Settings,
   Users,
   LogOut,
+  Wallet,
+  ChevronDown,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useConnection } from '@/context/ConnectionContext';
 import { supabase } from '@/lib/supabase';
 import { getSettings, loadSettingsFromDatabase, SETTINGS_UPDATED_EVENT, type AppSettings } from '@/lib/settings';
+import { checkSupabaseConnection } from '@/lib/heartbeat';
 import { Button } from './ui/button';
 
 type NavItem = {
@@ -30,31 +33,41 @@ type NavItem = {
 export function Sidebar() {
   const { user, role } = useAuth();
   const { isOnline } = useConnection();
+  const location = useLocation();
   const navigate = useNavigate();
   const [settings, setSettings] = useState<AppSettings>(getSettings());
+  const [systemHealth, setSystemHealth] = useState<'checking' | 'healthy' | 'degraded'>('checking');
 
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
+  const isCashier = role?.toLowerCase() === 'cashier';
+  const dashboardPath = isCashier ? '/dashboard?view=terminal' : '/dashboard';
 
   const staffNavItems: NavItem[] = [
-    { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Tableau de bord', icon: LayoutDashboard },
+    { to: dashboardPath, label: 'Tableau de bord', tooltip: 'Tableau de bord', icon: LayoutDashboard },
     { to: '/dashboard/daily-ledger', label: 'Journal Quotidien', tooltip: 'Journal quotidien', icon: BookOpenCheck },
-    { to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp },
-    { to: '/dashboard/intelligence', label: 'Intelligence', tooltip: 'Analyse IA Inventaire', icon: BrainCircuit },
+    ...(isCashier ? [] : [{ to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp }]),
   ];
 
-  const adminNavItems: NavItem[] = [
+  const adminCoreNavItems: NavItem[] = [
     { to: '/dashboard', label: 'Tableau de bord', tooltip: 'Tableau de bord', icon: LayoutDashboard },
     { to: '/dashboard/transactions', label: 'Transactions', tooltip: 'Transactions', icon: Receipt },
+    { to: '/dashboard/depenses', label: 'Dépenses', tooltip: 'Gestion des dépenses', icon: Wallet },
+    { to: '/dashboard/dettes', label: 'Suivi des Dettes', tooltip: 'Crédits clients', icon: CreditCard },
     { to: '/dashboard/assurances', label: 'Assurances', tooltip: 'Assurances', icon: Building2 },
     { to: '/dashboard/personnel', label: 'Personnel', tooltip: 'Gestion du Personnel', icon: Users },
-    { to: '/dashboard/about', label: 'À Propos', tooltip: 'À Propos', icon: Info },
-    { to: '/dashboard/other-apps', label: 'Écosystème BIZMAP', tooltip: 'Marketplace BIZMAP', icon: Grid2x2 },
-    { to: '/dashboard/intelligence', label: 'Intelligence', tooltip: 'Analyse IA Inventaire', icon: BrainCircuit },
-    { to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp },
     { to: '/dashboard/parametres', label: 'Paramètres', tooltip: 'Paramètres Administrateur', icon: Settings },
   ];
 
-  const navItems = isAdmin ? adminNavItems : staffNavItems;
+  const adminMoreNavItems: NavItem[] = [
+    { to: '/dashboard/about', label: 'À Propos', tooltip: 'À Propos', icon: Info },
+    { to: '/dashboard/other-apps', label: 'Écosystème BIZMAP', tooltip: 'Marketplace BIZMAP', icon: Grid2x2 },
+    { to: '/dashboard/help', label: 'Aide', tooltip: 'Centre d’aide', icon: CircleHelp },
+  ];
+
+  const navItems = isAdmin ? adminCoreNavItems : staffNavItems;
+  const moreActive = adminMoreNavItems.some((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+  const [isMoreOpen, setIsMoreOpen] = useState(moreActive);
+  const isMoreExpanded = moreActive || isMoreOpen;
 
   useEffect(() => {
     let mounted = true;
@@ -76,6 +89,42 @@ export function Sidebar() {
     return () => {
       mounted = false;
       window.removeEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const probeHealth = async () => {
+      if (!mounted) return;
+      setSystemHealth('checking');
+
+      const [connectionOk, sessionRes, txRes, shiftsRes] = await Promise.allSettled([
+        checkSupabaseConnection(),
+        supabase.auth.getSession(),
+        supabase.from('transactions').select('id').limit(1),
+        supabase.from('shifts').select('id').limit(1),
+      ]);
+
+      if (!mounted) return;
+
+      const isConnectionOk = connectionOk.status === 'fulfilled' && connectionOk.value === true;
+      const isSessionOk = sessionRes.status === 'fulfilled' && !sessionRes.value.error;
+      const isTransactionsOk = txRes.status === 'fulfilled' && !txRes.value.error;
+      const isShiftsOk = shiftsRes.status === 'fulfilled' && !shiftsRes.value.error;
+
+      setSystemHealth(isConnectionOk && isSessionOk && isTransactionsOk && isShiftsOk ? 'healthy' : 'degraded');
+    };
+
+    void probeHealth();
+    timer = setInterval(() => {
+      void probeHealth();
+    }, 30000);
+
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
     };
   }, []);
 
@@ -103,10 +152,11 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 p-4 mt-4" aria-label="Navigation principale">
         <p className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Menu Principal</p>
         {navItems.map(({ to, label, tooltip, icon: Icon }) => (
+          // Keep dashboard item exact-match active even when query params are present.
           <NavLink
             key={to}
             to={to}
-            end={to === '/dashboard'}
+            end={/^\/dashboard(\?.*)?$/.test(to)}
             title={tooltip}
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 group ${isActive
@@ -119,9 +169,64 @@ export function Sidebar() {
             {label}
           </NavLink>
         ))}
+        {isAdmin && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setIsMoreOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-white"
+            >
+              Plus
+              <ChevronDown className={`h-4 w-4 transition-transform ${isMoreExpanded ? 'rotate-180' : ''}`} aria-hidden />
+            </button>
+            {isMoreExpanded && (
+              <div className="mt-2 space-y-1">
+                {adminMoreNavItems.map(({ to, label, tooltip, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    title={tooltip}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 group ${
+                        isActive
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-inner'
+                          : 'text-slate-400 hover:bg-slate-900 hover:text-white'
+                      }`
+                    }
+                  >
+                    <Icon className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" aria-hidden />
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       <div className="mt-auto border-t border-slate-800/50 p-6 bg-slate-950/50">
+        <div className={`mb-4 flex items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${
+          systemHealth === 'healthy'
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+            : systemHealth === 'degraded'
+              ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+              : 'border-slate-700 bg-slate-900 text-slate-400'
+        }`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${
+            systemHealth === 'healthy'
+              ? 'bg-emerald-400'
+              : systemHealth === 'degraded'
+                ? 'bg-rose-400'
+                : 'bg-slate-500'
+          }`} />
+          <span>
+            {systemHealth === 'healthy'
+              ? 'System Healthy'
+              : systemHealth === 'degraded'
+                ? 'System Degraded'
+                : 'System Check'}
+          </span>
+        </div>
         <div className="mb-6 flex items-center gap-3">
           <div className="relative">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-xs uppercase shadow-inner">

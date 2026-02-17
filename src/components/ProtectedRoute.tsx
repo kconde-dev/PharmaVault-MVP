@@ -1,6 +1,6 @@
 import { useLocation, Navigate } from 'react-router-dom';
 import useAuth from '@/hooks/useAuth';
-import { ShieldAlert, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -37,26 +37,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     const isSubscriberAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
     if (!isSubscriberAdmin) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-          <div className="glass-card rounded-[3rem] p-10 max-w-md w-full border border-white/60 shadow-2xl text-center space-y-6 animate-in zoom-in duration-500">
-            <div className="mx-auto w-20 h-20 rounded-3xl bg-rose-50 flex items-center justify-center border border-rose-100 shadow-inner">
-              <ShieldAlert className="h-10 w-10 text-rose-500" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight italic">Accès Restreint</h1>
-              <div className="h-1 w-12 bg-rose-500 rounded-full mx-auto mt-2" />
-            </div>
-            <p className="text-sm font-medium text-slate-500 leading-relaxed">
-              Désolé, cette infrastructure est exclusivement réservée au personnel de direction.
-              Veuillez contacter votre administrateur système.
-            </p>
-            <div className="pt-4">
-              <Navigate to="/dashboard" replace />
-            </div>
-          </div>
-        </div>
-      );
+      return <Navigate to="/dashboard" replace />;
     }
   }
 

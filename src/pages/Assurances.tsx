@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Building2, Landmark, Receipt, PieChart, ArrowUpRight, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -28,6 +28,14 @@ type InsuranceTransactionRow = Transaction & {
   amount_covered_by_insurance?: number | null;
 };
 
+function normalizeInsuranceStatus(tx: InsuranceTransactionRow): 'pending' | 'approved' | 'rejected' {
+  const raw = String(tx.status || '').toLowerCase();
+  if (raw === 'approved' || raw === 'validé') return 'approved';
+  if (raw === 'rejected' || raw === 'rejeté') return 'rejected';
+  if (raw === 'pending' || raw === 'en_attente') return 'pending';
+  return 'approved';
+}
+
 export function Assurances() {
   const { role, user } = useAuth();
   const [insuranceGroups, setInsuranceGroups] = useState<InsuranceGroup[]>([]);
@@ -37,15 +45,7 @@ export function Assurances() {
   const [error, setError] = useState<string | null>(null);
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
 
-  const normalizeStatus = (tx: InsuranceTransactionRow): 'pending' | 'approved' | 'rejected' => {
-    const raw = String(tx.status || '').toLowerCase();
-    if (raw === 'approved' || raw === 'validé') return 'approved';
-    if (raw === 'rejected' || raw === 'rejeté') return 'rejected';
-    if (raw === 'pending' || raw === 'en_attente') return 'pending';
-    return 'approved';
-  };
-
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -114,7 +114,7 @@ export function Assurances() {
 
       const debtMap = new Map<string, InsuranceDebtSummary>();
       insuranceRows.forEach((tx) => {
-        const status = normalizeStatus(tx);
+        const status = normalizeInsuranceStatus(tx);
         const insuranceId = tx.insurance_id || null;
         const paymentStatus = String(tx.insurance_payment_status || 'unpaid').toLowerCase();
         if (!insuranceId || status !== 'approved' || paymentStatus === 'paid') return;
@@ -143,7 +143,7 @@ export function Assurances() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const handleMarkAsPaid = async (insuranceId: string) => {
     if (!isAdmin || !user) return;
@@ -230,7 +230,7 @@ export function Assurances() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshData]);
 
   const grandTotal = insuranceGroups.reduce((sum, group) => sum + group.total, 0);
   const totalTransactions = insuranceGroups.reduce((sum, group) => sum + group.count, 0);
@@ -442,14 +442,14 @@ export function Assurances() {
                             {new Date(tx.created_at).toLocaleDateString('fr-FR')}
                           </span>
                         </div>
-                        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${normalizeStatus(tx as InsuranceTransactionRow) === 'approved'
+                        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${normalizeInsuranceStatus(tx as InsuranceTransactionRow) === 'approved'
                           ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                          : normalizeStatus(tx as InsuranceTransactionRow) === 'rejected'
+                          : normalizeInsuranceStatus(tx as InsuranceTransactionRow) === 'rejected'
                             ? 'bg-rose-50 text-rose-600 border-rose-100'
                             : 'bg-amber-50 text-amber-600 border-amber-100'
                           }`}>
-                          {normalizeStatus(tx as InsuranceTransactionRow) === 'approved' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                          {normalizeStatus(tx as InsuranceTransactionRow) === 'approved' ? 'Approuvé' : normalizeStatus(tx as InsuranceTransactionRow) === 'rejected' ? 'Rejeté' : 'En attente'}
+                          {normalizeInsuranceStatus(tx as InsuranceTransactionRow) === 'approved' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                          {normalizeInsuranceStatus(tx as InsuranceTransactionRow) === 'approved' ? 'Approuvé' : normalizeInsuranceStatus(tx as InsuranceTransactionRow) === 'rejected' ? 'Rejeté' : 'En attente'}
                         </div>
                       </div>
                       {isAdmin && (

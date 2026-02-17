@@ -1,11 +1,11 @@
-import { supabase } from './supabase';
 import { connectionConfig } from './connectionConfig';
 
 /**
  * Lightweight check to verify Supabase connectivity.
  * Returns true if request succeeds within timeout, false otherwise.
  */
-export async function checkSupabaseConnection(_timeoutMs = connectionConfig.heartbeatTimeout): Promise<boolean> {
+export async function checkSupabaseConnection(_timeoutMs: number = connectionConfig.heartbeatTimeout): Promise<boolean> {
+  void _timeoutMs;
   return true; // Force online state
 }
 

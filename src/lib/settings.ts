@@ -62,10 +62,10 @@ type PharmacySettingsRow = {
 function normalizeSettings(raw: unknown): AppSettings {
     if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS;
     const source = raw as Partial<AppSettings>;
-    const pharmacy = source.pharmacy || {};
-    const whatsapp = source.whatsapp || {};
-    const proMode = source.proMode || {};
-    const smsGateway = source.smsGateway || {};
+    const pharmacy: Partial<PharmacyInfo> = source.pharmacy ?? {};
+    const whatsapp: Partial<WhatsAppSettings> = source.whatsapp ?? {};
+    const proMode: Partial<AppSettings['proMode']> = source.proMode ?? {};
+    const smsGateway: Partial<AppSettings['smsGateway']> = source.smsGateway ?? {};
 
     return {
         pharmacy: {

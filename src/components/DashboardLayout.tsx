@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,13 +6,46 @@ import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, SETTINGS_UPDAT
 import { MapPin, Building2, MessageCircleMore } from 'lucide-react';
 import { openBizmapSupportChat } from '@/lib/bizmapSupport';
 
+function buildRouteContext(pathname: string): string {
+  const labelBySegment: Record<string, string> = {
+    dashboard: 'Dashboard',
+    transactions: 'Transactions',
+    'daily-ledger': 'Journal Quotidien',
+    help: 'Aide',
+    gardes: 'Gardes',
+    depenses: 'Depenses',
+    dettes: 'Suivi Dettes',
+    assurances: 'Assurances',
+    ledger: 'Ledger',
+    claims: 'Claims',
+    about: 'A Propos',
+    'other-apps': 'Ecosysteme',
+    solutions: 'Solutions',
+    'google-maps': 'Google Maps',
+    'custom-apps': 'Apps Sur Mesure',
+    safeguard: 'SafeGuard',
+    parametres: 'Parametres',
+    personnel: 'Personnel',
+  };
+
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length === 0) return 'Dashboard';
+  const labels = segments.map((segment) => labelBySegment[segment] || segment);
+  return labels.join(' > ');
+}
+
 export function DashboardLayout() {
   const { role } = useAuth();
+  const location = useLocation();
   const [isSupabaseOnline, setIsSupabaseOnline] = useState<boolean>(true);
   const [settings, setSettings] = useState<AppSettings>(getSettings());
+  const isCashier = role?.toLowerCase() === 'cashier';
+  const viewParam = new URLSearchParams(location.search).get('view');
+  const isCashierTerminalFocus = isCashier && location.pathname === '/dashboard' && viewParam === 'terminal';
+  const routeContext = buildRouteContext(location.pathname);
 
   useEffect(() => {
-    let poller: any = null;
+    let poller: { stop?: () => void } | null = null;
     (async () => {
       const { createHeartbeatPoller } = await import('@/lib/heartbeat');
       poller = createHeartbeatPoller((status: boolean) => {
@@ -56,10 +89,11 @@ export function DashboardLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden bg-slate-50/50">
+      {!isCashierTerminalFocus && <Sidebar />}
+      <div className={`flex flex-1 flex-col overflow-hidden ${isCashierTerminalFocus ? 'bg-slate-950' : 'bg-slate-50/50'}`}>
         {/* Global Branding Header */}
-        <header className="flex h-20 items-center justify-between border-b border-slate-200/60 bg-white/40 backdrop-blur-xl px-8 z-10 transition-all duration-300">
+        {!isCashierTerminalFocus && (
+          <header className="flex h-20 items-center justify-between border-b border-slate-200/60 bg-white/40 backdrop-blur-xl px-8 z-10 transition-all duration-300">
           <div className="flex items-center gap-5">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm border border-slate-200 group hover:border-emerald-500/30 transition-all">
               <Building2 className="h-7 w-7 text-emerald-600 group-hover:scale-110 transition-transform" />
@@ -72,6 +106,9 @@ export function DashboardLayout() {
                 <MapPin className="h-3 w-3 text-slate-400" strokeWidth={2.5} />
                 <span>{settings.pharmacy.address}</span>
               </div>
+              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                {routeContext}
+              </p>
             </div>
           </div>
 
@@ -91,7 +128,8 @@ export function DashboardLayout() {
               </div>
             </div>
           </div>
-        </header>
+          </header>
+        )}
 
         <main className="flex-1 overflow-y-auto relative">
           {/* Admin-visible server connectivity banner */}
@@ -100,21 +138,27 @@ export function DashboardLayout() {
               ⚠️ Attention: Synchronisation interrompue • Risque de perte de données
             </div>
           )}
-          <div className="max-w-[1600px] mx-auto">
+          {isCashierTerminalFocus ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="max-w-[1600px] mx-auto">
+              <Outlet />
+            </div>
+          )}
 
-          <button
-            type="button"
-            onClick={openBizmapSupportChat}
-            title="Besoin d'aide ? Contactez BIZMAP"
-            className="fixed bottom-6 right-6 z-40 group inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xl shadow-emerald-500/30 hover:bg-emerald-600 transition-all"
-          >
-            <MessageCircleMore className="h-7 w-7" />
-            <span className="pointer-events-none absolute right-16 whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
-              Besoin d'aide ? Contactez BIZMAP
-            </span>
-          </button>
+          {!isCashierTerminalFocus && (
+            <button
+              type="button"
+              onClick={openBizmapSupportChat}
+              title="Besoin d'aide ? Contactez BIZMAP"
+              className="fixed bottom-6 right-6 z-40 group inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xl shadow-emerald-500/30 hover:bg-emerald-600 transition-all"
+            >
+              <MessageCircleMore className="h-7 w-7" />
+              <span className="pointer-events-none absolute right-16 whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
+                Besoin d'aide ? Contactez BIZMAP
+              </span>
+            </button>
+          )}
         </main>
       </div>
     </div>

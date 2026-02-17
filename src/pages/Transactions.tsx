@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Building2, Receipt, Wallet } from 'lucide-react';
+import TransactionLedger from '@/components/TransactionLedger';
 
 export function Transactions() {
   const navigate = useNavigate();
@@ -44,6 +45,10 @@ export function Transactions() {
           <p className="mt-2 text-sm text-slate-600">Créances assurance, bordereaux et règlement.</p>
         </button>
       </div>
+
+      <section className="pt-2">
+        <TransactionLedger />
+      </section>
     </div>
   );
 }

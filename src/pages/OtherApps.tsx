@@ -116,6 +116,20 @@ export function OtherApps() {
           </div>
           <div className="mt-6 rounded-2xl border border-amber-300/30 bg-slate-950/50 p-4">
             <h4 className="text-sm font-black uppercase tracking-wider text-amber-200">PharmaVault Pro : La Souverainete Totale</h4>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-cyan-300/30 bg-cyan-900/20 px-3 py-2">
+                <p className="text-[11px] font-black uppercase tracking-wider text-cyan-100">Flagship: On-Premise Private Server</p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-200">
+                  Serveur local dedie au proprietaire pour autonomie, vitesse et confidentialite maximale.
+                </p>
+              </div>
+              <div className="rounded-xl border border-emerald-300/30 bg-emerald-900/20 px-3 py-2">
+                <p className="text-[11px] font-black uppercase tracking-wider text-emerald-100">Flagship: AI Stock Alerts</p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-200">
+                  L&apos;IA detecte les risques de rupture et declenche des alertes proactives pour proteger vos ventes.
+                </p>
+              </div>
+            </div>
             <p className="mt-2 text-xs leading-6 text-slate-300">
               <span className="font-bold text-slate-100">Hebergement Prive:</span> Vos donnees ne quittent jamais votre batiment.
               Nous installons un serveur local dedie pour une vitesse foudroyante et une confidentialite absolue.

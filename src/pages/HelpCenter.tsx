@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { BookOpen, ShieldCheck, ShieldAlert, FileText, BarChart3, ClipboardCheck, Wallet } from 'lucide-react';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
+import { useAuth } from '@/hooks/useAuth';
 
 const tabs = [
   { id: 'staff', label: 'Espace Staff', tooltip: 'Guide d’utilisation staff' },
@@ -8,10 +10,16 @@ const tabs = [
 ] as const;
 
 export function HelpCenter() {
+  const { role } = useAuth();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('staff');
   const helpLink = buildWhatsAppLink(
     "Bonjour, j'ai besoin d'assistance sur le Help Center PharmaVault. Merci de me contacter pour support.",
   );
+  const isCashier = role?.toLowerCase() === 'cashier';
+
+  if (isCashier) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <div className="p-6 lg:p-8 space-y-10">

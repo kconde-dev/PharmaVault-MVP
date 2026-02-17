@@ -186,7 +186,7 @@ export function StatsGrid() {
                 <XAxis dataKey="label" stroke="#64748b" tickLine={false} axisLine={false} />
                 <YAxis stroke="#64748b" tickLine={false} axisLine={false} />
                 <Tooltip
-                  formatter={(value: number) => `${formatAmount(value)} GNF`}
+                  formatter={(value: number | string | undefined) => `${formatAmount(Number(value ?? 0))} GNF`}
                   labelStyle={{ color: '#0f172a', fontWeight: 700 }}
                 />
                 <Line

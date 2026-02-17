@@ -3,6 +3,7 @@ import { RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatSupabaseError } from '@/lib/supabaseError';
 import { useAuth } from '@/hooks/useAuth';
+import AppToast, { type ToastVariant } from '@/components/AppToast';
 
 type DbPaymentMethod = 'Espèces' | 'Orange Money (Code Marchand)';
 
@@ -13,6 +14,8 @@ interface LedgerTransaction {
   type: string;
   amount: number;
   shift_id: string;
+  created_by?: string | null;
+  cashier_name?: string | null;
   payment_method?: string | null;
   status?: string | null;
 }
@@ -59,6 +62,7 @@ export function TransactionLedger() {
   const [returnTarget, setReturnTarget] = useState<LedgerTransaction | null>(null);
   const [returnReason, setReturnReason] = useState<'Erreur de saisie' | 'Produit retourné' | 'Erreur prix'>('Erreur de saisie');
   const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
+  const [toast, setToast] = useState<{ variant: ToastVariant; title: string; message: string; hint?: string } | null>(null);
 
   const normalizePaymentMethodForDb = (raw: string | null | undefined): DbPaymentMethod => {
     const value = String(raw || '').trim().toLowerCase();
@@ -87,20 +91,36 @@ export function TransactionLedger() {
   const loadTransactions = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    try {
+      const { start, end } = getDateBounds(selectedDate);
+      const { data, error: fetchError } = await supabase
+        .from('transactions')
+        .select('id, created_at, description, type, amount, shift_id, created_by, cashier_name, payment_method, status')
+        .gte('created_at', start)
+        .lte('created_at', end)
+        .order('created_at', { ascending: false });
 
-    const { start, end } = getDateBounds(selectedDate);
-    const { data, error: fetchError } = await supabase
-      .from('transactions')
-      .select('id, created_at, description, type, amount, shift_id, payment_method, status')
-      .gte('created_at', start)
-      .lte('created_at', end)
-      .order('created_at', { ascending: false });
-
-    if (fetchError) {
-      setError(formatSupabaseError(fetchError, 'Erreur de chargement des transactions.'));
+      if (fetchError) {
+        const message = formatSupabaseError(fetchError, 'Erreur de chargement des transactions.');
+        setError(message);
+        setTransactions([]);
+        setToast({
+          variant: 'error',
+          title: 'Journal indisponible',
+          message,
+        });
+      } else {
+        setTransactions((data || []) as LedgerTransaction[]);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur réseau.';
+      setError(message);
       setTransactions([]);
-    } else {
-      setTransactions((data || []) as LedgerTransaction[]);
+      setToast({
+        variant: 'error',
+        title: 'Échec de chargement',
+        message,
+      });
     }
 
     setIsLoading(false);
@@ -141,37 +161,59 @@ export function TransactionLedger() {
     const paymentMethod = normalizePaymentMethodForDb(returnTarget.payment_method);
     const returnAmount = -Math.abs(Number(returnTarget.amount || 0));
 
-    const { error: updateError } = await supabase
-      .from('transactions')
-      .update({
+    try {
+      const { error: updateError } = await supabase
+        .from('transactions')
+        .update({
+          status: 'Retourné',
+        })
+        .eq('id', returnTarget.id);
+
+      if (updateError) {
+        setError(formatSupabaseError(updateError, 'Erreur lors de la mise à jour du statut de retour.'));
+        setToast({
+          variant: 'error',
+          title: 'Retour refusé',
+          message: formatSupabaseError(updateError, 'Impossible de mettre à jour la transaction.'),
+        });
+        setIsSubmittingReturn(false);
+        return;
+      }
+
+      const reversalPayload = {
+        shift_id: returnTarget.shift_id,
+        amount: returnAmount,
+        description: `Remboursement: ${returnTarget.description || returnTarget.id}`,
+        type: 'Retour',
+        category: 'Retour',
+        payment_method: paymentMethod,
         status: 'Retourné',
-      })
-      .eq('id', returnTarget.id);
+        created_by: user.id,
+        is_approved: true,
+      };
 
-    if (updateError) {
-      setError(formatSupabaseError(updateError, 'Erreur lors de la mise à jour du statut de retour.'));
-      setIsSubmittingReturn(false);
-      return;
-    }
+      const { error: createError } = await supabase
+        .from('transactions')
+        .insert(reversalPayload);
 
-    const reversalPayload = {
-      shift_id: returnTarget.shift_id,
-      amount: returnAmount,
-      description: `Remboursement: ${returnTarget.description || returnTarget.id}`,
-      type: 'Retour',
-      category: 'Retour',
-      payment_method: paymentMethod,
-      status: 'Retourné',
-      created_by: user.id,
-      is_approved: true,
-    };
-
-    const { error: createError } = await supabase
-      .from('transactions')
-      .insert(reversalPayload);
-
-    if (createError) {
-      setError(formatSupabaseError(createError, 'Erreur lors de la création de la transaction de retour.'));
+      if (createError) {
+        setError(formatSupabaseError(createError, 'Erreur lors de la création de la transaction de retour.'));
+        setToast({
+          variant: 'error',
+          title: 'Retour incomplet',
+          message: formatSupabaseError(createError, 'La transaction de remboursement n’a pas pu être créée.'),
+        });
+        setIsSubmittingReturn(false);
+        return;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur réseau pendant le retour.';
+      setError(message);
+      setToast({
+        variant: 'error',
+        title: 'Retour échoué',
+        message,
+      });
       setIsSubmittingReturn(false);
       return;
     }
@@ -186,6 +228,14 @@ export function TransactionLedger() {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+      <AppToast
+        open={Boolean(toast)}
+        variant={toast?.variant || 'error'}
+        title={toast?.title || ''}
+        message={toast?.message || ''}
+        hint={toast?.hint}
+        onClose={() => setToast(null)}
+      />
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-black text-slate-900" title="Live Cash Ledger">Journal de Caisse en Direct</h2>
@@ -219,6 +269,7 @@ export function TransactionLedger() {
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wider text-slate-500">
                 <th className="pb-3 pr-4 font-bold" title="Time">Heure</th>
+                <th className="pb-3 pr-4 font-bold" title="Cashier">Caissier</th>
                 <th className="pb-3 pr-4 font-bold" title="Category">Catégorie</th>
                 <th className="pb-3 pr-4 font-bold" title="Nature">Nature</th>
                 <th className="pb-3 text-right font-bold" title="Amount">Montant</th>
@@ -229,6 +280,7 @@ export function TransactionLedger() {
               {transactions.map((tx) => (
                 <tr key={tx.id} className="border-b border-slate-100 last:border-0">
                   <td className="py-3 pr-4 font-medium text-slate-700">{formatTime(tx.created_at)}</td>
+                  <td className="py-3 pr-4 font-semibold text-slate-800">{tx.cashier_name || tx.created_by || '—'}</td>
                   <td className="py-3 pr-4 font-semibold text-slate-900">{tx.description || '-'}</td>
                   <td className="py-3 pr-4 capitalize text-slate-600">{tx.type}</td>
                   <td className="py-3 text-right">

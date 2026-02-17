@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useContext,
@@ -19,6 +20,7 @@ export interface UseAuthResult {
 }
 
 const AuthContext = createContext<UseAuthResult | undefined>(undefined);
+const LAST_ROLE_STORAGE_KEY = 'pharmavault.last_role';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -26,6 +28,45 @@ interface AuthProviderProps {
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
+}
+
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes('timeout after');
+}
+
+function normalizeRole(raw: unknown): 'administrator' | 'cashier' | null {
+  const value = String(raw || '').toLowerCase().trim();
+  if (value === 'administrator' || value === 'admin') return 'administrator';
+  if (value === 'cashier' || value === 'staff') return 'cashier';
+  return null;
+}
+
+function readCachedRole(): 'administrator' | 'cashier' | null {
+  if (typeof window === 'undefined') return null;
+  return normalizeRole(window.localStorage.getItem(LAST_ROLE_STORAGE_KEY));
+}
+
+function persistRole(role: 'administrator' | 'cashier'): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(LAST_ROLE_STORAGE_KEY, role);
+}
+
+function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
 /**
@@ -39,42 +80,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     let mounted = true;
+    let isBootstrapping = true;
     let roleRequestSeq = 0;
-    const ADMIN_EMAIL = 'admin@pharmavault.com';
-
-    const getRoleFromMetadata = (authUser: User): UserRole | null => {
-      const email = String(authUser.email || '').toLowerCase().trim();
-      if (email === ADMIN_EMAIL) {
-        return 'administrator';
-      }
-
-      const roleCandidate = String(
-        authUser.user_metadata?.role ??
-        authUser.app_metadata?.role ??
-        ''
-      ).toLowerCase();
-
-      if (roleCandidate === 'administrator' || roleCandidate === 'admin') {
-        return 'administrator';
-      }
-      if (roleCandidate === 'staff') {
-        return 'staff';
-      }
-      return null;
-    };
-
     const fetchRole = async (authUser: User) => {
+      const cachedRole = readCachedRole();
+      const emailLocalPart = String(authUser.email || '').split('@')[0]?.toLowerCase().trim();
       try {
-        const roleFromMetadata = getRoleFromMetadata(authUser);
-        if (roleFromMetadata) {
-          return roleFromMetadata;
+        const { data, error: profileError } = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', authUser.id)
+            .maybeSingle(),
+          2500,
+          'profile role lookup'
+        );
+
+        if (profileError) {
+          // Graceful fallback to cashier when role lookup is unavailable.
+          if (cachedRole) return cachedRole;
+          return emailLocalPart === 'admin' ? 'administrator' : 'cashier';
         }
-        return 'staff';
+        const profileRole = normalizeRole(data?.role);
+        if (profileRole) {
+          persistRole(profileRole);
+          return profileRole;
+        }
+        if (cachedRole) return cachedRole;
+        return emailLocalPart === 'admin' ? 'administrator' : 'cashier';
       } catch (err) {
-        if (!isAbortError(err)) {
-          console.error('Error fetching role:', err);
+        if (!isAbortError(err) && !isTimeoutError(err)) {
+          console.error('Error fetching role from profiles:', err);
         }
-        return 'staff';
+        if (cachedRole) return cachedRole;
+        return emailLocalPart === 'admin' ? 'administrator' : 'cashier';
       }
     };
 
@@ -83,6 +122,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (!authUser) {
         setRole(null);
+        setError(null);
         setLoading(false);
         return;
       }
@@ -95,6 +135,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       setRole(userRole);
+      setError(null);
       setLoading(false);
     };
 
@@ -102,7 +143,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         setLoading(true);
         // getSession is faster and less likely to trigger AbortErrors than getUser for initial state
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          3000,
+          'auth session lookup'
+        );
 
         if (!mounted) return;
 
@@ -116,8 +161,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.error('Auth initialization error:', err);
         if (mounted) {
           setError(err instanceof Error ? err : new Error(String(err)));
+          setUser(null);
+          setRole(null);
           setLoading(false);
         }
+      } finally {
+        isBootstrapping = false;
       }
     };
 
@@ -126,6 +175,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+      if (event === 'INITIAL_SESSION' && isBootstrapping) return;
 
       const authUser = session?.user ?? null;
 
