@@ -3,7 +3,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { DEFAULT_SETTINGS, getSettings, loadSettingsFromDatabase, SETTINGS_UPDATED_EVENT, type AppSettings } from '@/lib/settings';
-import { MapPin, Building2, MessageCircleMore } from 'lucide-react';
+import { MapPin, Building2, MessageCircleMore, Menu, X } from 'lucide-react';
 import { openBizmapSupportChat } from '@/lib/bizmapSupport';
 
 function buildRouteContext(pathname: string): string {
@@ -39,6 +39,7 @@ export function DashboardLayout() {
   const location = useLocation();
   const [isSupabaseOnline, setIsSupabaseOnline] = useState<boolean>(true);
   const [settings, setSettings] = useState<AppSettings>(getSettings());
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const isCashier = role?.toLowerCase() === 'cashier';
   const viewParam = new URLSearchParams(location.search).get('view');
   const isCashierTerminalFocus = isCashier && location.pathname === '/dashboard' && viewParam === 'terminal';
@@ -87,14 +88,39 @@ export function DashboardLayout() {
     };
   }, []);
 
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [location.pathname, location.search]);
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {!isCashierTerminalFocus && <Sidebar />}
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
+      {!isCashierTerminalFocus && <div className="hidden md:block"><Sidebar /></div>}
+      {!isCashierTerminalFocus && isMobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Fermer le menu"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="absolute inset-0 bg-slate-950/60"
+          />
+          <div className="relative h-full w-72 max-w-[85vw]">
+            <Sidebar />
+          </div>
+        </div>
+      )}
       <div className={`flex flex-1 flex-col overflow-hidden ${isCashierTerminalFocus ? 'bg-slate-950' : 'bg-slate-50/50'}`}>
         {/* Global Branding Header */}
         {!isCashierTerminalFocus && (
-          <header className="flex h-20 items-center justify-between border-b border-slate-200/60 bg-white/40 backdrop-blur-xl px-8 z-10 transition-all duration-300">
+          <header className="z-10 flex h-20 items-center justify-between border-b border-slate-200/60 bg-white/40 px-4 backdrop-blur-xl transition-all duration-300 md:px-8">
           <div className="flex items-center gap-5">
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 md:hidden"
+              aria-label={isMobileSidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+            >
+              {isMobileSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm border border-slate-200 group hover:border-emerald-500/30 transition-all">
               <Building2 className="h-7 w-7 text-emerald-600 group-hover:scale-110 transition-transform" />
             </div>
