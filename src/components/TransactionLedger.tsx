@@ -298,10 +298,10 @@ export function TransactionLedger() {
                           setReturnReason('Erreur de saisie');
                         }}
                         className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100"
-                        title="Refund"
+                        title="Rembourser"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        Refund
+                        Rembourser
                       </button>
                     </td>
                   )}
@@ -317,7 +317,7 @@ export function TransactionLedger() {
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <h3 className="text-lg font-black text-slate-900">Confirmer le Retour - Pharmacie Djoma</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Transaction: <span className="font-bold text-slate-900">{returnTarget.description || returnTarget.id}</span>
+              Transaction : <span className="font-bold text-slate-900">{returnTarget.description || returnTarget.id}</span>
             </p>
             <label htmlFor="return-reason" className="mt-4 block text-xs font-bold uppercase tracking-wider text-slate-600">
               Motif du retour
@@ -333,7 +333,7 @@ export function TransactionLedger() {
               <option value="Erreur prix">Erreur prix</option>
             </select>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-slate-600">
-              Confirmation Admin
+              Validation admin
             </label>
             <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
               {getAdminName()}

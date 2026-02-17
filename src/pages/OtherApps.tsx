@@ -72,7 +72,7 @@ export function OtherApps() {
             <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
               <p className="flex items-center gap-2 text-sm font-black text-amber-200">
                 <WifiOff className="h-4 w-4" />
-                Offline-First Sync
+                Synchronisation Hors Ligne Prioritaire
               </p>
               <p className="mt-1 text-xs leading-6 text-slate-300">Travaillez meme sans internet: la caisse continue et la synchro reprend automatiquement.</p>
             </article>

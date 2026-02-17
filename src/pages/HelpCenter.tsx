@@ -5,8 +5,8 @@ import { buildWhatsAppLink } from '@/lib/whatsapp';
 import { useAuth } from '@/hooks/useAuth';
 
 const tabs = [
-  { id: 'staff', label: 'Espace Staff', tooltip: 'Guide d’utilisation staff' },
-  { id: 'admin', label: 'Espace Admin', tooltip: 'Guide d’utilisation administrateur' },
+  { id: 'staff', label: 'Espace Caissier', tooltip: 'Guide d’utilisation caissier' },
+  { id: 'admin', label: 'Espace Administrateur', tooltip: 'Guide d’utilisation administrateur' },
 ] as const;
 
 export function HelpCenter() {
@@ -51,7 +51,7 @@ export function HelpCenter() {
         <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 space-y-6 shadow-2xl shadow-slate-400/20">
           <div className="flex items-center gap-2 text-slate-900">
             <BookOpen className="h-5 w-5 text-emerald-300" />
-            <h2 className="text-lg font-black text-white" title="Espace Staff">Espace Staff</h2>
+            <h2 className="text-lg font-black text-white" title="Espace Caissier">Espace Caissier</h2>
           </div>
           <p className="text-sm leading-7 text-slate-200">
             Ce parcours est conçu pour sécuriser la caisse tout en gardant un rythme rapide au comptoir.

@@ -231,7 +231,7 @@ function TerminalTimePanel({
               : 'border border-amber-300/50 bg-amber-500/20 text-amber-200'
           }`}
         >
-          Status: {isOnline ? 'Online' : 'Offline'}
+          Statut : {isOnline ? 'En ligne' : 'Hors ligne'}
         </span>
       </div>
       <p className="mt-2 text-sm font-black uppercase tracking-[0.2em] text-amber-300">Temps de garde: {formatElapsed(startedAt)}</p>
@@ -347,6 +347,7 @@ export function Dashboard() {
 
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
   const isCashier = role?.toLowerCase() === 'cashier';
+  const roleLabel = isAdmin ? 'administrateur' : isCashier ? 'caissier' : String(role || 'utilisateur');
   const view = new URLSearchParams(location.search).get('view');
   const isTerminalQueryView = view === 'terminal';
   const forcedTerminalView = isCashier;
@@ -636,7 +637,7 @@ export function Dashboard() {
       description: isCreditSale
         ? `Crédit Client - ${recetteForm.customerName}${recetteForm.customerPhone ? ` | Tel: ${recetteForm.customerPhone}` : ''}`
         : isInsuranceSale
-        ? `Recette Assurance - ${recetteForm.insurerName} | Matricule: ${recetteForm.matricule} | Patient: ${formatAmountGNF(patientPart)} | Assurance: ${formatAmountGNF(insurancePart)}`
+        ? `Recette Assurance - ${recetteForm.insurerName} | Matricule: ${recetteForm.matricule} | Part Patient: ${formatAmountGNF(patientPart)} | Part Assurance: ${formatAmountGNF(insurancePart)}`
         : 'Recette',
       type: isCreditSale ? 'Crédit' : 'Recette',
       category: isCreditSale ? 'Crédit Client' : 'Vente',
@@ -1092,7 +1093,7 @@ export function Dashboard() {
             Pharmacie Djoma
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Session {role}: <span className="font-bold text-slate-900">{user?.email?.split('@')[0]}</span>
+            Session {roleLabel}: <span className="font-bold text-slate-900">{user?.email?.split('@')[0]}</span>
           </p>
         </div>
 
@@ -1117,7 +1118,7 @@ export function Dashboard() {
                       : 'text-slate-700 hover:bg-emerald-100'
                   }`}
                 >
-                  Mode Admin
+                  Vue Admin
                 </button>
                 <button
                   type="button"
@@ -1131,7 +1132,7 @@ export function Dashboard() {
                       : 'text-slate-700 hover:bg-emerald-100'
                   }`}
                 >
-                  Mode Terminal
+                  Vue Terminal
                 </button>
               </div>
             </div>
@@ -1404,7 +1405,7 @@ export function Dashboard() {
                                   : 'text-emerald-100 hover:bg-emerald-800/40'
                               }`}
                             >
-                              Mode Admin
+                              Vue Admin
                             </button>
                             <button
                               type="button"
@@ -1418,7 +1419,7 @@ export function Dashboard() {
                                   : 'text-emerald-100 hover:bg-emerald-800/40'
                               }`}
                             >
-                              Mode Terminal
+                              Vue Terminal
                             </button>
                           </div>
                         )}
@@ -1582,12 +1583,12 @@ export function Dashboard() {
                       <div className="w-full max-w-3xl rounded-2xl border border-cyan-300/30 bg-cyan-950/20 p-3">
                         <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Raccourcis Terminal</p>
                         <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-cyan-50">
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">/ Focus montant</span>
+                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">/ Cibler montant</span>
                           <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Alt+1 Espèces</span>
                           <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Alt+2 Orange Money</span>
                           <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Alt+3 Crédit / Dette</span>
                           <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Ctrl+Entrée Vérifier</span>
-                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Entrée Confirmer (dans modal)</span>
+                          <span className="rounded-lg border border-cyan-300/30 bg-cyan-900/40 px-2 py-1">Entrée valider (dans la fenêtre)</span>
                         </div>
                       </div>
                       {!isCreditSale && (
@@ -1657,10 +1658,10 @@ export function Dashboard() {
                               Total: <span className="text-white">{formatAmountGNF(amountValue)} GNF</span>
                             </p>
                             <p className="rounded-xl border border-emerald-400/40 bg-emerald-900/20 px-3 py-2 text-emerald-200">
-                              Patient: <span className="text-emerald-100">{formatAmountGNF(patientPart)} GNF</span>
+                              Part Patient: <span className="text-emerald-100">{formatAmountGNF(patientPart)} GNF</span>
                             </p>
                             <p className="rounded-xl border border-cyan-400/40 bg-cyan-900/20 px-3 py-2 text-cyan-200">
-                              Assurance: <span className="text-cyan-100">{formatAmountGNF(insurancePart)} GNF</span>
+                              Part Assurance: <span className="text-cyan-100">{formatAmountGNF(insurancePart)} GNF</span>
                             </p>
                           </div>
                         )}

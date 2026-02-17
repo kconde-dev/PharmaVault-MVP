@@ -123,7 +123,7 @@ export function DashboardLayout() {
               <div className={`h-2.5 w-2.5 rounded-full ${isSupabaseOnline ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.4)] animate-pulse'}`} />
               <div className="absolute top-12 right-0 hidden group-hover:block transition-all opacity-0 group-hover:opacity-100">
                 <div className="bg-slate-900 text-white text-[10px] px-3 py-1.5 rounded-lg whitespace-nowrap shadow-xl">
-                  Status: {isSupabaseOnline ? 'Serveur Opérationnel' : 'Connexion Perdue'}
+                  Statut : {isSupabaseOnline ? 'Serveur opérationnel' : 'Connexion perdue'}
                 </div>
               </div>
             </div>

@@ -221,10 +221,10 @@ export function Sidebar() {
           }`} />
           <span>
             {systemHealth === 'healthy'
-              ? 'System Healthy'
+              ? 'Système sain'
               : systemHealth === 'degraded'
-                ? 'System Degraded'
-                : 'System Check'}
+                ? 'Système dégradé'
+                : 'Vérification système'}
           </span>
         </div>
         <div className="mb-6 flex items-center gap-3">
