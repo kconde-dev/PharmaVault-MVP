@@ -11,12 +11,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { formatSupabaseError } from '@/lib/supabaseError';
 
-type TxType = 'income' | 'expense' | 'recette' | 'dépense';
+type TxType = 'income' | 'expense' | 'recette' | 'dépense' | 'crédit' | 'credit';
 
 interface TxRow {
   amount: number;
   type: TxType;
   created_at: string;
+  payment_method?: string | null;
+  payment_status?: string | null;
+  status?: string | null;
 }
 
 interface DailyPoint {
@@ -45,10 +48,47 @@ function isIncome(type: TxType): boolean {
   return type === 'income' || type === 'recette';
 }
 
+function isExpense(type: TxType): boolean {
+  return type === 'expense' || type === 'dépense';
+}
+
+function isCredit(type: TxType): boolean {
+  return type === 'crédit' || type === 'credit';
+}
+
+function isApprovedStatus(raw: string | null | undefined): boolean {
+  const value = String(raw || '').toLowerCase();
+  return value === '' || value === 'approved' || value === 'validé';
+}
+
+function isCashOrOrangeMethod(raw: string | null | undefined): boolean {
+  const value = String(raw || '').toLowerCase().trim();
+  return (
+    value === 'espèces'
+    || value === 'especes'
+    || value === 'cash'
+    || value === 'orange money (code marchand)'
+    || value === 'orange money'
+    || value === 'orange_money'
+    || value === 'mobile_money'
+  );
+}
+
+interface GlobalSummary {
+  totalReceipts: number;
+  totalExpenses: number;
+  totalDebts: number;
+}
+
 export function StatsGrid() {
   const { role, loading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [series, setSeries] = useState<DailyPoint[]>([]);
+  const [globalSummary, setGlobalSummary] = useState<GlobalSummary>({
+    totalReceipts: 0,
+    totalExpenses: 0,
+    totalDebts: 0,
+  });
   const [error, setError] = useState<string | null>(null);
 
   const isAdmin = role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'administrator';
@@ -72,20 +112,52 @@ export function StatsGrid() {
       start.setDate(start.getDate() - 6);
       start.setHours(0, 0, 0, 0);
 
-      const { data, error: fetchError } = await supabase
-        .from('transactions')
-        .select('amount, type, created_at')
-        .gte('created_at', start.toISOString())
-        .lte('created_at', today.toISOString())
-        .order('created_at', { ascending: true });
+      const [seriesResult, totalsResult] = await Promise.allSettled([
+        supabase
+          .from('transactions')
+          .select('amount, type, created_at, status')
+          .gte('created_at', start.toISOString())
+          .lte('created_at', today.toISOString())
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('transactions')
+          .select('amount, type, payment_method, payment_status, status'),
+      ]);
 
       if (!mounted) return;
 
-      if (fetchError) {
-        setError(formatSupabaseError(fetchError, 'Erreur de chargement des statistiques.'));
+      if (seriesResult.status !== 'fulfilled') {
+        setError('Erreur de chargement des statistiques.');
         setSeries([]);
         setIsLoading(false);
         return;
+      }
+      if (seriesResult.value.error) {
+        setError(formatSupabaseError(seriesResult.value.error, 'Erreur de chargement des statistiques.'));
+        setSeries([]);
+        setIsLoading(false);
+        return;
+      }
+      if (totalsResult.status === 'fulfilled' && !totalsResult.value.error) {
+        const totalsRows = (totalsResult.value.data || []) as TxRow[];
+        const totalReceipts = totalsRows.reduce((sum, row) => {
+          if (!isIncome(row.type)) return sum;
+          if (!isApprovedStatus(row.status)) return sum;
+          if (!isCashOrOrangeMethod(row.payment_method)) return sum;
+          return sum + (Number(row.amount) || 0);
+        }, 0);
+        const totalExpenses = totalsRows.reduce((sum, row) => {
+          if (!isExpense(row.type)) return sum;
+          if (!isApprovedStatus(row.status)) return sum;
+          return sum + (Number(row.amount) || 0);
+        }, 0);
+        const totalDebts = totalsRows.reduce((sum, row) => {
+          if (!isCredit(row.type)) return sum;
+          if (!isApprovedStatus(row.status)) return sum;
+          if (String(row.payment_status || '') !== 'Dette Totale') return sum;
+          return sum + (Number(row.amount) || 0);
+        }, 0);
+        setGlobalSummary({ totalReceipts, totalExpenses, totalDebts });
       }
 
       const points = new Map<string, DailyPoint>();
@@ -102,7 +174,8 @@ export function StatsGrid() {
         });
       }
 
-      ((data || []) as TxRow[]).forEach((row) => {
+      ((seriesResult.value.data || []) as TxRow[]).forEach((row) => {
+        if (!isApprovedStatus(row.status)) return;
         const rowDate = new Date(row.created_at);
         const key = toDateKey(rowDate);
         const point = points.get(key);
@@ -127,15 +200,7 @@ export function StatsGrid() {
     };
   }, [authLoading, isAdmin]);
 
-  const todayStats = useMemo(() => {
-    const todayKey = toDateKey(new Date());
-    const today = series.find((d) => d.dateKey === todayKey);
-    return {
-      totalIn: today?.in ?? 0,
-      totalOut: today?.out ?? 0,
-      net: (today?.in ?? 0) - (today?.out ?? 0),
-    };
-  }, [series]);
+  const bilanNet = useMemo(() => globalSummary.totalReceipts - globalSummary.totalExpenses, [globalSummary]);
 
   if (!isAdmin) return null;
 
@@ -158,22 +223,27 @@ export function StatsGrid() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">Chiffre d&apos;Affaires (Aujourd&apos;hui)</p>
-              <p className="mt-3 text-3xl font-black text-emerald-700">{formatAmount(todayStats.totalIn)}</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">Bilan Global: Total Recettes (Cash/OM)</p>
+              <p className="mt-3 text-3xl font-black text-emerald-700">{formatAmount(globalSummary.totalReceipts)}</p>
             </div>
 
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-rose-700">Dépenses (Aujourd&apos;hui)</p>
-              <p className="mt-3 text-3xl font-black text-rose-700">{formatAmount(todayStats.totalOut)}</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-rose-700">Bilan Global: Total Dépenses</p>
+              <p className="mt-3 text-3xl font-black text-rose-700">{formatAmount(globalSummary.totalExpenses)}</p>
             </div>
 
             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-blue-700">Bénéfice Net</p>
-              <p className={`mt-3 text-3xl font-black ${todayStats.net >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
-                {todayStats.net >= 0 ? '+' : ''}
-                {formatAmount(todayStats.net)}
-              </p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-blue-700">Bilan Global: Total Créances</p>
+              <p className="mt-3 text-3xl font-black text-blue-700">{formatAmount(globalSummary.totalDebts)}</p>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs font-bold uppercase tracking-wider text-slate-600">
+            Solde net global (Recettes - Dépenses):{' '}
+            <span className={bilanNet >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
+              {bilanNet >= 0 ? '+' : ''}
+              {formatAmount(bilanNet)} GNF
+            </span>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

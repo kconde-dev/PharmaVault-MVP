@@ -40,6 +40,7 @@ export interface Shift {
     user_id: string;
     started_at: string;
     ended_at: string | null;
+    closed_reason?: 'normal' | 'forced_by_admin' | null;
     expected_cash?: number | null;
     actual_cash?: number | null;
     cash_difference?: number | null;

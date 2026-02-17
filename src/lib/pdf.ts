@@ -347,3 +347,104 @@ export function downloadInsuranceClaimInvoicePDF(args: {
     newWindow.print();
   };
 }
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+export function generateDebtListPDF({
+  generatedAt,
+  rows,
+}: {
+  generatedAt: string;
+  rows: Array<{
+    customerName: string;
+    customerPhone: string;
+    amountDue: number;
+    transactionDate: string;
+  }>;
+}): string {
+  const totalDebt = rows.reduce((sum, row) => sum + Number(row.amountDue || 0), 0);
+  const lines = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(row.customerName)}</td>
+          <td>${escapeHtml(row.customerPhone || 'Non renseigné')}</td>
+          <td>${Number(row.amountDue || 0).toLocaleString('fr-FR')} GNF</td>
+          <td>${escapeHtml(row.transactionDate)}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Liste des Dettes Clients</title>
+      <style>
+        body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
+        .header { border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 16px; }
+        .title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+        .meta { font-size: 12px; color: #374151; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; text-align: left; }
+        th { background: #f3f4f6; text-transform: uppercase; letter-spacing: 0.04em; }
+        .total { margin-top: 18px; text-align: right; font-size: 16px; font-weight: 700; }
+        .foot { margin-top: 24px; font-size: 11px; color: #6b7280; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="title">Suivi des Dettes - Export PDF</div>
+        <div class="meta">Date d'export: ${escapeHtml(generatedAt)}</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Nom du Client</th>
+            <th>Téléphone</th>
+            <th>Montant Dû</th>
+            <th>Date de la transaction</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lines}
+        </tbody>
+      </table>
+      <div class="total">Total des créances: ${totalDebt.toLocaleString('fr-FR')} GNF</div>
+      <div class="foot">Document généré automatiquement par PharmaVault.</div>
+    </body>
+    </html>
+  `;
+}
+
+export function downloadDebtListPDF(params: {
+  generatedAt: string;
+  rows: Array<{
+    customerName: string;
+    customerPhone: string;
+    amountDue: number;
+    transactionDate: string;
+  }>;
+}): void {
+  const html = generateDebtListPDF(params);
+  const newWindow = window.open('', '_blank');
+  if (!newWindow) {
+    alert('Impossible d\'ouvrir le fichier. Vérifiez les paramètres de votre navigateur.');
+    return;
+  }
+  newWindow.document.write(html);
+  newWindow.document.close();
+  newWindow.onload = () => {
+    newWindow.print();
+  };
+}

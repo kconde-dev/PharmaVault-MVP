@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useConnection } from '@/context/ConnectionContext';
-import { Play, X, Share2, CheckCircle, AlertTriangle, History, Check, RotateCcw, Maximize2, Minimize2 } from 'lucide-react';
+import { Play, X, Share2, CheckCircle, AlertTriangle, History, Check, RotateCcw, Maximize2, Minimize2, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AppToast, { type ToastVariant } from '@/components/AppToast';
@@ -95,6 +95,31 @@ function isMissingShiftBalanceColumnsError(err: unknown): boolean {
   ).toLowerCase();
   return message.includes('opening_balance') || message.includes('closing_balance');
 }
+
+function isSingleActiveShiftConflict(err: unknown): boolean {
+  const code = String((err as { code?: string } | null)?.code || '');
+  const message = String(
+    (err as { message?: string } | null)?.message ||
+    (err as { details?: string } | null)?.details ||
+    ''
+  ).toLowerCase();
+  return code === '23505' || message.includes('single_active') || message.includes('active shift');
+}
+
+function isMissingRpcFunction(err: unknown): boolean {
+  const code = String((err as { code?: string } | null)?.code || '');
+  const message = String((err as { message?: string } | null)?.message || '').toLowerCase();
+  return code === 'PGRST202' || message.includes('get_active_shift_guardian') || message.includes('could not find the function');
+}
+
+type ActiveShiftGuardian = {
+  shift_id: string;
+  user_id: string;
+  started_at: string;
+  cashier_name: string;
+};
+
+const ENABLE_ACTIVE_SHIFT_RPC = String(import.meta.env.VITE_ENABLE_ACTIVE_SHIFT_RPC || 'false').toLowerCase() === 'true';
 
 function normalizeTransaction(row: Record<string, unknown>): Transaction {
   const rawType = String(row.type || '').toLowerCase();
@@ -291,6 +316,7 @@ export function Dashboard() {
   const location = useLocation();
 
   const [currentShift, setCurrentShift] = useState<Shift | null>(null);
+  const [globalActiveShift, setGlobalActiveShift] = useState<ActiveShiftGuardian | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [showCloseShiftForm, setShowCloseShiftForm] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
@@ -311,6 +337,7 @@ export function Dashboard() {
   );
   const amountInputRef = useRef<HTMLInputElement | null>(null);
   const terminalSectionRef = useRef<HTMLElement | null>(null);
+  const hasActiveShiftRpcRef = useRef<boolean | null>(null);
 
   // Recette form state
   const [recetteForm, setRecetteForm] = useState({
@@ -411,6 +438,60 @@ export function Dashboard() {
     }
   }, [user]);
 
+  const refreshGlobalActiveShift = useCallback(async () => {
+    try {
+      if (ENABLE_ACTIVE_SHIFT_RPC && hasActiveShiftRpcRef.current !== false) {
+        const { data, error: activeError } = await supabase.rpc('get_active_shift_guardian');
+        if (!activeError) {
+          hasActiveShiftRpcRef.current = true;
+          const row = (Array.isArray(data) ? data[0] : data) as ActiveShiftGuardian | null;
+          setGlobalActiveShift(row ?? null);
+          return row ?? null;
+        }
+        if (isMissingRpcFunction(activeError)) {
+          hasActiveShiftRpcRef.current = false;
+        } else {
+          setGlobalActiveShift(null);
+          return null;
+        }
+      }
+
+      // Fallback path when RPC is not deployed yet.
+      const { data: shiftRows, error: shiftError } = await supabase
+        .from('shifts')
+        .select('id, user_id, started_at')
+        .is('ended_at', null)
+        .order('started_at', { ascending: true })
+        .limit(1);
+
+      if (shiftError || !shiftRows || shiftRows.length === 0) {
+        setGlobalActiveShift(null);
+        return null;
+      }
+
+      const row = shiftRows[0] as { id: string; user_id: string; started_at: string };
+      const fallbackCashierName =
+        row.user_id === user?.id
+          ? getCashierName({
+            email: user?.email ?? null,
+            user_metadata: (user?.user_metadata as Record<string, unknown> | null) ?? null,
+          })
+          : 'Caissier';
+
+      const fallback: ActiveShiftGuardian = {
+        shift_id: row.id,
+        user_id: row.user_id,
+        started_at: row.started_at,
+        cashier_name: fallbackCashierName,
+      };
+      setGlobalActiveShift(fallback);
+      return fallback;
+    } catch {
+      setGlobalActiveShift(null);
+      return null;
+    }
+  }, [user]);
+
   // Helper to query transactions
   const queryTransactions = async (shiftId: string) => {
     try {
@@ -450,7 +531,10 @@ export function Dashboard() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const shift = await fetchActiveShift();
+      const [shift] = await Promise.all([
+        fetchActiveShift(),
+        refreshGlobalActiveShift(),
+      ]);
       if (!mounted) return;
       setCurrentShift(shift);
 
@@ -462,7 +546,7 @@ export function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, [fetchActiveShift]);
+  }, [fetchActiveShift, refreshGlobalActiveShift]);
 
   // Update lists when currentShift changes
   useEffect(() => {
@@ -526,6 +610,20 @@ export function Dashboard() {
       return;
     }
     try {
+      const activeShift = await refreshGlobalActiveShift();
+      if (activeShift) {
+        const message = 'Une garde est déjà en cours. Veuillez clôturer la garde actuelle avant d\'en démarrer une nouvelle.';
+        setError(message);
+        setToast({
+          variant: 'warning',
+          title: 'Garde deja active',
+          message,
+          hint: `Garde en cours par : ${activeShift.cashier_name || 'Caissier'}.`,
+        });
+        setIsStarting(false);
+        return;
+      }
+
       const openingPayload = {
         user_id: user.id,
         started_at: new Date().toISOString(),
@@ -542,6 +640,19 @@ export function Dashboard() {
         insertError = retry.error;
       }
       if (insertError) {
+        if (isSingleActiveShiftConflict(insertError)) {
+          const message = 'Une garde est déjà en cours. Veuillez clôturer la garde actuelle avant d\'en démarrer une nouvelle.';
+          const currentActiveShift = await refreshGlobalActiveShift();
+          setError(message);
+          setToast({
+            variant: 'warning',
+            title: 'Garde deja active',
+            message,
+            hint: currentActiveShift ? `Garde en cours par : ${currentActiveShift.cashier_name || 'Caissier'}.` : undefined,
+          });
+          setIsStarting(false);
+          return;
+        }
         setError(formatSupabaseError(insertError, 'Impossible de démarrer la garde.'));
         setToast({
           variant: 'error',
@@ -555,6 +666,7 @@ export function Dashboard() {
 
       const shift = await fetchActiveShift();
       setCurrentShift(shift);
+      await refreshGlobalActiveShift();
       setToast({
         variant: 'success',
         title: 'Garde ouverte',
@@ -905,6 +1017,7 @@ export function Dashboard() {
         actual_cash: Number(actualCashAmount),
         cash_difference: Number(cashDifference),
         closing_balance: Number(actualCashAmount),
+        closed_reason: 'normal',
         closed_by: closedById,
       };
       let { error: updateError } = await supabase
@@ -958,6 +1071,8 @@ export function Dashboard() {
       soldeNetARemettre,
       cashDifference,
     });
+    setCurrentShift(null);
+    await refreshGlobalActiveShift();
 
     setShowCloseShiftForm(false);
     setCloseShiftForm({ actualCash: '' });
@@ -967,6 +1082,57 @@ export function Dashboard() {
       title: 'Garde cloturee',
       message: 'Clôture enregistrée avec succès.',
       hint: 'Partagez le rapport propriétaire.',
+    });
+  };
+
+  const handleForceCloseActiveShift = async () => {
+    if (!isAdmin || !user?.id || !globalActiveShift) return;
+    if (!window.confirm(`Forcer la clôture de la garde de ${globalActiveShift.cashier_name || 'ce caissier'} ?`)) return;
+
+    setError(null);
+    const forcedPayload = {
+      ended_at: new Date().toISOString(),
+      closed_by: user.id,
+      closed_reason: 'forced_by_admin',
+    };
+
+    let { error: forceError } = await supabase
+      .from('shifts')
+      .update(forcedPayload)
+      .eq('id', globalActiveShift.shift_id)
+      .is('ended_at', null);
+
+    if (forceError && isMissingShiftBalanceColumnsError(forceError)) {
+      const retry = await supabase
+        .from('shifts')
+        .update({
+          ended_at: new Date().toISOString(),
+          closed_by: user.id,
+        })
+        .eq('id', globalActiveShift.shift_id)
+        .is('ended_at', null);
+      forceError = retry.error;
+    }
+
+    if (forceError) {
+      setError(formatSupabaseError(forceError, 'Impossible de forcer la clôture.'));
+      setToast({
+        variant: 'error',
+        title: 'Force close echoue',
+        message: 'La garde active n’a pas pu être clôturée.',
+      });
+      return;
+    }
+
+    if (currentShift && currentShift.id === globalActiveShift.shift_id) {
+      setCurrentShift(null);
+    }
+    await refreshGlobalActiveShift();
+    setToast({
+      variant: 'success',
+      title: 'Force close admin',
+      message: `Garde de ${globalActiveShift.cashier_name || 'ce caissier'} clôturée par administrateur.`,
+      hint: 'Motif: Forced by Admin',
     });
   };
 
@@ -1028,6 +1194,9 @@ export function Dashboard() {
     (tx) => isToday(tx.created_at) && tx.type === 'dépense' && tx.status === 'pending' && Number(tx.amount || 0) >= 500000
   ).length;
   const todayRiskSignalsCount = todayReturnsCount + highValuePendingExpensesCount;
+  const hasAnotherActiveGuard = Boolean(globalActiveShift && (!currentShift || globalActiveShift.shift_id !== currentShift.id));
+  const activeGuardCashierName = globalActiveShift?.cashier_name || 'Caissier';
+  const canStartShift = !isStarting && !currentShift && !hasAnotherActiveGuard;
 
   useEffect(() => {
     if (!isTerminalMode || !currentShift || showPreCloseModal || showCloseShiftForm) return;
@@ -1174,13 +1343,28 @@ export function Dashboard() {
             <Button
               onClick={handleStartShift}
               isLoading={isStarting}
+              disabled={!canStartShift}
               className="gap-2 h-11 rounded-xl pharmacy-gradient text-white font-bold shadow-lg shadow-emerald-500/25 px-6 border-0"
             >
               <Play className="h-4 w-4" />
               Ouvrir la Caisse
             </Button>
           )}
+          {isAdmin && hasAnotherActiveGuard && (
+            <Button
+              variant="destructive"
+              onClick={() => void handleForceCloseActiveShift()}
+              className="h-11 rounded-xl px-5 text-xs font-black uppercase tracking-wider"
+            >
+              Forcer la Clôture (Admin)
+            </Button>
+          )}
         </div>
+        {hasAnotherActiveGuard && (
+          <p className="mt-2 text-xs font-black uppercase tracking-wider text-amber-700">
+            Garde en cours par : {activeGuardCashierName}
+          </p>
+        )}
         </header>
       )}
 
@@ -1200,7 +1384,46 @@ export function Dashboard() {
         onClose={() => setToast(null)}
       />
 
+      {!isTerminalMode && (
+        <section className={`rounded-2xl border p-4 shadow-sm ${
+          globalActiveShift
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+            : 'border-slate-200 bg-white text-slate-700'
+        }`}>
+          <p className="text-sm font-black uppercase tracking-[0.1em]">
+            {globalActiveShift ? `🟢 Garde Active : ${activeGuardCashierName}` : '⚪ Aucune Garde en cours'}
+          </p>
+        </section>
+      )}
+
       {!isTerminalMode && <StatsGrid />}
+      {!isTerminalMode && (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Formule de Contrôle Caisse</p>
+            <span
+              title="Formule de rapprochement utilisée pour comparer le théorique et le physique à la clôture."
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300 bg-white text-emerald-700"
+            >
+              <CircleHelp className="h-3.5 w-3.5" />
+            </span>
+          </div>
+          <p className="mt-2 text-sm font-black text-emerald-900">
+            Espèces Finales = (Fond de Caisse + Recettes Cash) - Dépenses
+          </p>
+        </section>
+      )}
+
+      {!isTerminalMode && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-black uppercase tracking-[0.1em] text-slate-900">Rules of Engagement - Gestion du Cash (Petite Caisse)</h2>
+          <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-700">
+            <li><span className="font-black">Rule 1:</span> Aucun montant ne sort du tiroir sans un Engagement de Dépense enregistré.</li>
+            <li><span className="font-black">Rule 2:</span> Tout transfert Orange Money doit inclure l&apos;ID de transaction pour le rapprochement.</li>
+          </ul>
+        </section>
+      )}
+
       {!isTerminalMode && isAdmin && (
         <section className="grid gap-4 md:grid-cols-3">
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1733,12 +1956,26 @@ export function Dashboard() {
                     <Button
                       className="mt-4"
                       onClick={handleStartShift}
-                      disabled={isStarting}
+                      disabled={!canStartShift}
                       isLoading={isStarting}
                     >
                       <Play className="mr-2 h-4 w-4" aria-hidden />
                       Démarrer la Garde
                     </Button>
+                    {isAdmin && hasAnotherActiveGuard && (
+                      <Button
+                        variant="destructive"
+                        className="mt-3"
+                        onClick={() => void handleForceCloseActiveShift()}
+                      >
+                        Forcer la Clôture (Admin)
+                      </Button>
+                    )}
+                    {hasAnotherActiveGuard && (
+                      <p className="mt-3 text-xs font-black uppercase tracking-wider text-amber-700">
+                        Garde en cours par : {activeGuardCashierName}
+                      </p>
+                    )}
                   </section>
                 )}
 
@@ -1986,7 +2223,7 @@ export function Dashboard() {
                     <Button
                       variant="outline"
                       onClick={handleStartShift}
-                      disabled={isStarting}
+                      disabled={!canStartShift}
                       isLoading={isStarting}
                       className="h-11 rounded-xl"
                     >
@@ -1994,7 +2231,21 @@ export function Dashboard() {
                       Démarrer la Garde
                     </Button>
                   )}
+                  {isAdmin && hasAnotherActiveGuard && (
+                    <Button
+                      variant="destructive"
+                      onClick={() => void handleForceCloseActiveShift()}
+                      className="h-11 rounded-xl px-5 text-xs font-black uppercase tracking-wider"
+                    >
+                      Forcer la Clôture (Admin)
+                    </Button>
+                  )}
                 </div>
+                {hasAnotherActiveGuard && (
+                  <p className="mt-3 text-xs font-black uppercase tracking-wider text-amber-700">
+                    Garde en cours par : {activeGuardCashierName}
+                  </p>
+                )}
                 {currentShift && (
                   <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-emerald-700">
                     Garde active depuis {new Date(currentShift.started_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}

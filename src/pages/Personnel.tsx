@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import AppToast, { type ToastVariant } from '@/components/AppToast';
 import { useAuth } from '@/hooks/useAuth';
 import { useConnection } from '@/context/ConnectionContext';
+import { supabase } from '@/lib/supabase';
 import {
   createUser,
   getAllStaff,
@@ -26,6 +27,21 @@ interface AddEmployeeForm {
   accessCode: string; // 6-digit PIN
 }
 
+interface DebtOwnerSummary {
+  totalAmount: number;
+  debtCount: number;
+}
+
+function isCreditType(raw: string | null): boolean {
+  const value = String(raw || '').toLowerCase();
+  return value === 'crédit' || value === 'credit';
+}
+
+function isApprovedStatus(raw: string | null): boolean {
+  const value = String(raw || '').toLowerCase();
+  return value === 'approved' || value === 'validé' || value === '';
+}
+
 export const Personnel: React.FC = () => {
   const { role } = useAuth();
   const { isOnline } = useConnection();
@@ -41,13 +57,37 @@ export const Personnel: React.FC = () => {
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [pendingUserDelete, setPendingUserDelete] = useState<{ id: string; username: string } | null>(null);
+  const [debtByCashier, setDebtByCashier] = useState<Record<string, DebtOwnerSummary>>({});
 
   const loadStaff = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const staffData = await getAllStaff();
+      const [staffData, debtResult] = await Promise.all([
+        getAllStaff(),
+        supabase
+          .from('transactions')
+          .select('created_by, amount, payment_status, type, status')
+          .eq('payment_status', 'Dette Totale'),
+      ]);
       setStaff(staffData);
+      if (!debtResult.error) {
+        const debtMap: Record<string, DebtOwnerSummary> = {};
+        (debtResult.data || []).forEach((row) => {
+          if (!isCreditType((row as { type?: string | null }).type || null)) return;
+          if (!isApprovedStatus((row as { status?: string | null }).status || null)) return;
+          const ownerId = String((row as { created_by?: string | null }).created_by || '');
+          if (!ownerId) return;
+          if (!debtMap[ownerId]) {
+            debtMap[ownerId] = { totalAmount: 0, debtCount: 0 };
+          }
+          debtMap[ownerId].totalAmount += Number((row as { amount?: number | null }).amount || 0);
+          debtMap[ownerId].debtCount += 1;
+        });
+        setDebtByCashier(debtMap);
+      } else {
+        setDebtByCashier({});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dépassement de capacité ou erreur réseau');
     } finally {
@@ -223,6 +263,7 @@ export const Personnel: React.FC = () => {
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Email</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Niveau d'Accès</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date d'Enrôlement</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Dettes en cours</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Contrôle de Sécurité</th>
                 </tr>
               </thead>
@@ -267,6 +308,14 @@ export const Personnel: React.FC = () => {
                       <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
                         <Calendar className="h-3.5 w-3.5 text-slate-300" />
                         {new Date(member.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                        <p>{(debtByCashier[member.id]?.totalAmount || 0).toLocaleString('fr-FR')} GNF</p>
+                        <p className="text-[10px] uppercase tracking-widest text-amber-600">
+                          {debtByCashier[member.id]?.debtCount || 0} créances
+                        </p>
                       </div>
                     </td>
                     <td className="px-8 py-6 text-right">

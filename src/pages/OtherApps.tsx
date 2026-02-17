@@ -1,150 +1,129 @@
 import { useState } from 'react';
-import { ArrowRight, MapPinned, ShieldAlert, Wrench, X, Timer, Crown, Rocket, ShieldCheck, WifiOff } from 'lucide-react';
+import { ArrowRight, Crown, MapPinned, ShieldAlert, Timer, WifiOff, BrainCircuit, DatabaseZap, X, CircleHelp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { openBizmapSupportChat } from '@/lib/bizmapSupport';
 
-type SolutionKey = 'google' | 'custom' | 'safeguard';
+type SolutionKey = 'google' | 'safeguard' | 'terminal' | 'pro';
 
 export function OtherApps() {
   const [activeModal, setActiveModal] = useState<SolutionKey | null>(null);
+  const [isContactOpen, setIsContactOpen] = useState(false);
 
   return (
     <div className="p-6 lg:p-8 space-y-10">
       <header>
-        <h1 className="text-3xl font-black text-slate-900" title="L'écosystème BIZMAP">
-          L&apos;Écosystème BIZMAP : Croissance Digitale pour l&apos;Afrique.
-        </h1>
-        <p className="text-sm text-slate-700 leading-7 mt-3" title="Mission BIZMAP">
-          Aider chaque entreprise en Afrique à grandir. À l&apos;ère de l&apos;IA, les PME sont le moteur de l&apos;économie et
-          BIZMAP s&apos;assure qu&apos;elles disposent des meilleurs outils.
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-black text-slate-900" title="L'Écosystème BIZMAP : La Puissance Digitale pour votre Pharmacie">
+            L&apos;Écosystème BIZMAP : La Puissance Digitale pour votre Pharmacie
+          </h1>
+          <span
+            title="Cette page présente les leviers de croissance: performance caisse, visibilité Google et sécurité anti-perte."
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700"
+          >
+            <CircleHelp className="h-4 w-4" />
+          </span>
+        </div>
+        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-700">
+          Pensé pour les officines de Conakry, cet écosystème transforme votre pharmacie en business suite moderne:
+          encaissement rapide, paiements Orange Money, pilotage des Pharmacies de Garde, visibilité Google et sécurité magasin.
         </p>
       </header>
-
-      <section className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900">BIZMAP Ecosystem</h2>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Une suite complète de solutions terrain pour la croissance des entreprises guinéennes:
-          visibilité, sécurité opérationnelle et automatisation métier.
-        </p>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Plus qu&apos;un logiciel, c&apos;est votre bras droit: PharmaVault sécurise vos revenus, gère vos assurances
-          et vous envoie votre bilan chaque soir par WhatsApp.
-        </p>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Nouveau: le terminal de vente haute vitesse, pensé pour les heures de pointe, permet un encaissement visuel,
-          vérifié et traçable par caissier.
-        </p>
-      </section>
 
       <section className="rounded-3xl border border-emerald-300 bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-900 p-6 shadow-2xl shadow-emerald-500/10">
         <div className="flex items-center gap-3">
           <Timer className="h-6 w-6 text-emerald-300" />
-          <h3 className="text-lg font-black text-white">High-Speed Terminal (Cockpit Caissier)</h3>
+          <h2 className="text-lg font-black text-white">High-Speed Terminal: Cockpit Caissier</h2>
         </div>
         <p className="mt-3 text-sm leading-7 text-slate-200">
-          Conçu pour les pharmacies sous pression, ce terminal plein écran réduit les erreurs de caisse avec
-          validation explicite, calcul de monnaie et historique instantané.
+          Le standard haute performance 2026 pour les opérations en officine à Conakry:
+          <span className="font-black text-emerald-200"> validation visuelle</span> avant encaissement,
+          <span className="font-black text-emerald-200"> calculateur de monnaie</span> intégré et traçabilité par caissier.
         </p>
         <p className="mt-3 text-sm leading-7 text-slate-300">
-          Timer de session en direct, suivi par caissier et pré-clôture avant la validation Admin: vos équipes restent rapides,
-          concentrées et responsables.
+          Résultat: moins d&apos;erreurs de caisse, plus de vitesse en heure de pointe, meilleure discipline opérationnelle.
         </p>
-        <blockquote className="mt-4 rounded-xl border border-emerald-400/30 bg-emerald-900/20 p-4 text-sm italic leading-7 text-emerald-100">
-          &quot;We don&apos;t just give you a database; we give you a cockpit. Our &apos;High-Speed Terminal&apos; is designed to
-          handle the busiest hours in Conakry. With a live session timer, cashier-specific tracking, and a built-in
-          change calculator, your staff stays focused, fast, and honest.&quot;
-        </blockquote>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveModal('terminal')}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:bg-slate-700/40"
+          >
+            Voir la fiche pro
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsContactOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-950 hover:bg-emerald-300"
+          >
+            Demander un Devis
+          </button>
+        </div>
       </section>
 
       <section className="relative overflow-hidden rounded-3xl border border-amber-300/40 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6 shadow-2xl shadow-amber-500/10">
         <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-amber-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -left-14 bottom-0 h-48 w-48 rounded-full bg-blue-400/20 blur-3xl" />
         <div className="relative">
           <div className="flex items-center gap-3">
             <Crown className="h-6 w-6 text-amber-300" />
-            <h3 className="text-lg font-black text-white">PharmaVault Pro: Le Successeur de Pharma.</h3>
+            <h2 className="text-lg font-black text-white">PharmaVault Pro: Premium Upgrade (Legacy Killer)</h2>
           </div>
           <p className="mt-3 text-sm leading-7 text-slate-200">
-            Une edition premium concue pour les pharmacies qui veulent passer d&apos;un logiciel classique a un cockpit moderne,
-            ultra-rapide et orienté croissance.
+            PharmaVault Standard vous dit où part votre argent aujourd&apos;hui.
+            <span className="font-black text-amber-200"> PharmaVault Pro</span> vous donne le contrôle stratégique de demain.
           </p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
-              <p className="flex items-center gap-2 text-sm font-black text-amber-200">
-                <WifiOff className="h-4 w-4" />
-                Synchronisation Hors Ligne Prioritaire
-              </p>
-              <p className="mt-1 text-xs leading-6 text-slate-300">Travaillez meme sans internet: la caisse continue et la synchro reprend automatiquement.</p>
-            </article>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
             <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
               <p className="flex items-center gap-2 text-sm font-black text-cyan-200">
-                <ShieldCheck className="h-4 w-4" />
-                Transparent Audit Trail
+                <WifiOff className="h-4 w-4" />
+                Serveur Privé (Souveraineté)
               </p>
-              <p className="mt-1 text-xs leading-6 text-slate-300">Chaque action est horodatée, attribuée et vérifiable pour une traçabilité totale.</p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">
+                Votre pharmacie continue de vendre même en cas de coupure internet nationale.
+              </p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">
+                Mini-Serveur local optimisé 24/7: SSD industriel, refroidissement renforcé et stabilité haute température.
+              </p>
             </article>
             <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
               <p className="flex items-center gap-2 text-sm font-black text-emerald-200">
-                <Rocket className="h-4 w-4" />
-                2026 High-Performance UI
+                <BrainCircuit className="h-4 w-4" />
+                Alertes SMS & IA
               </p>
-              <p className="mt-1 text-xs leading-6 text-slate-300">Terminal plein écran instantané, parcours caissier optimisé pour les heures de pointe.</p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">
+                Le propriétaire reçoit des alertes proactives sur anomalies de stock et de trésorerie.
+              </p>
             </article>
             <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
               <p className="flex items-center gap-2 text-sm font-black text-amber-200">
-                <Crown className="h-4 w-4" />
-                Full Customization
+                <DatabaseZap className="h-4 w-4" />
+                Migration Zero-Effort
               </p>
-              <p className="mt-1 text-xs leading-6 text-slate-300">Adaptez les flux, les champs et les rapports a votre modèle de pharmacie.</p>
+              <p className="mt-1 text-xs leading-6 text-slate-300">
+                Import direct de vos données legacy vers PharmaVault Pro sans interruption de service.
+              </p>
             </article>
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={openBizmapSupportChat}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-950 hover:bg-amber-300"
+              onClick={() => setActiveModal('pro')}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:bg-slate-700/40"
             >
-              Migrer depuis l&apos;ancien logiciel
+              Voir la fiche pro
             </button>
             <button
               type="button"
-              onClick={openBizmapSupportChat}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/50 px-4 py-2 text-xs font-black uppercase tracking-wider text-cyan-100 hover:bg-cyan-900/20"
+              onClick={() => setIsContactOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-950 hover:bg-amber-300"
             >
-              Demander une demo Pro
+              Demander un Devis
             </button>
           </div>
-          <div className="mt-6 rounded-2xl border border-amber-300/30 bg-slate-950/50 p-4">
-            <h4 className="text-sm font-black uppercase tracking-wider text-amber-200">PharmaVault Pro : La Souverainete Totale</h4>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-cyan-300/30 bg-cyan-900/20 px-3 py-2">
-                <p className="text-[11px] font-black uppercase tracking-wider text-cyan-100">Flagship: On-Premise Private Server</p>
-                <p className="mt-1 text-[11px] leading-5 text-slate-200">
-                  Serveur local dedie au proprietaire pour autonomie, vitesse et confidentialite maximale.
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-300/30 bg-emerald-900/20 px-3 py-2">
-                <p className="text-[11px] font-black uppercase tracking-wider text-emerald-100">Flagship: AI Stock Alerts</p>
-                <p className="mt-1 text-[11px] leading-5 text-slate-200">
-                  L&apos;IA detecte les risques de rupture et declenche des alertes proactives pour proteger vos ventes.
-                </p>
-              </div>
-            </div>
-            <p className="mt-2 text-xs leading-6 text-slate-300">
-              <span className="font-bold text-slate-100">Hebergement Prive:</span> Vos donnees ne quittent jamais votre batiment.
-              Nous installons un serveur local dedie pour une vitesse foudroyante et une confidentialite absolue.
-            </p>
-            <p className="mt-2 text-xs leading-6 text-slate-300">
-              <span className="font-bold text-slate-100">IA Predictive:</span> Ne soyez jamais surpris par une rupture.
-              Notre IA analyse vos ventes historiques pour commander le bon stock au bon moment.
-            </p>
-            <p className="mt-2 text-xs leading-6 text-slate-300">
-              <span className="font-bold text-slate-100">Alertes SMS Critiques:</span> Si un produit sensible atteint un seuil critique,
-              le systeme vous envoie un SMS automatique. Vous gardez le controle, meme en deplacement.
-            </p>
-            <p className="mt-2 text-xs leading-6 text-slate-300">
-              <span className="font-bold text-slate-100">Migration Sans Effort:</span> Nous importons vos anciennes donnees "Pharma"
-              ou "Excel" en quelques minutes grace a notre moteur de nettoyage IA.
+          <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-900/20 p-3">
+            <p className="text-xs font-black uppercase tracking-wider text-amber-100">Roadmap Pro</p>
+            <p className="mt-1 text-xs leading-6 text-slate-300">
+              Migration Mode: nous ne supprimons pas votre ancien logiciel, nous mappons les anciennes tables SQL vers
+              le schéma moderne PharmaVault pour une transition sans perte.
             </p>
           </div>
         </div>
@@ -153,130 +132,124 @@ export function OtherApps() {
       <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-2xl shadow-slate-400/20">
         <div className="flex items-center gap-3">
           <MapPinned className="h-6 w-6 text-cyan-300" />
-          <h3 className="text-lg font-black text-white">Google Maps & SEO (Propulsez votre visibilité)</h3>
+          <h2 className="text-lg font-black text-white">SEO & Google Maps</h2>
         </div>
         <p className="mt-3 text-sm leading-7 text-slate-300">
-          80% des clients à Conakry utilisent Google Maps pour trouver une pharmacie de garde.
-          BIZMAP ne se contente pas de vous lister ; nous optimisons votre Business Profile pour vous placer
-          dans le Top 3.
+          <span className="font-black text-cyan-200">Devenez le N°1 sur Google Maps à Conakry.</span> Nous optimisons
+          votre fiche pour capter le trafic local, surtout lors des recherches &quot;pharmacie de garde&quot;.
         </p>
         <p className="mt-3 text-sm leading-7 text-slate-300">
-          Notre stratégie SEO locale combine structure sémantique, avis clients et optimisation d&apos;intentions de recherche
-          pour capter durablement le trafic physique à Conakry.
+          Impact direct: plus d&apos;appels, plus d&apos;itinéraires, plus de clients en comptoir.
         </p>
-        <p className="mt-3 text-sm leading-7 text-slate-300">
-          Résultat : plus d&apos;appels, plus d&apos;itinéraires, et votre Code Marchand Orange Money visible
-          directement pour des pré-paiements rapides.
-        </p>
-        <p className="mt-3 text-sm leading-7 text-slate-300">
-          Votre officine devient le premier choix client quand quelqu&apos;un tape "Pharmacie" à Conakry.
-        </p>
-        <button
-          type="button"
-          onClick={() => setActiveModal('google')}
-          className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-200 hover:bg-slate-700/40"
-        >
-          Voir la fiche pro
-        </button>
-        <button
-          type="button"
-          onClick={openBizmapSupportChat}
-          className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-900/20"
-        >
-          Me Contacter
-        </button>
-        <Link
-          to="/dashboard/solutions/google-maps"
-          className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-900 hover:bg-emerald-400"
-          title="Voir les détails - Google Maps & SEO"
-        >
-          Voir les détails
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="mt-3 rounded-xl border border-cyan-300/30 bg-cyan-900/20 p-3">
+          <p className="text-xs font-black uppercase tracking-wider text-cyan-100">Stratégie Top 3 Pack</p>
+          <p className="mt-1 text-xs leading-6 text-slate-300">
+            1) Optimisation GMB (catégories, horaires, photos, services), 2) gestion active des avis et réponses,
+            3) ciblage mots-clés de proximité: pharmacie ouverte maintenant, pharmacie de garde, ordonnance urgente, Orange Money.
+          </p>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveModal('google')}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:bg-slate-700/40"
+          >
+            Voir la fiche pro
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsContactOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-900/20"
+          >
+            Me Contacter
+          </button>
+          <Link
+            to="/dashboard/solutions/google-maps"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-900 hover:bg-emerald-400"
+          >
+            Voir les détails
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </section>
 
       <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-2xl shadow-slate-400/20">
         <div className="flex items-center gap-3">
           <ShieldAlert className="h-6 w-6 text-rose-300" />
-          <h3 className="text-lg font-black text-white">SafeGuard Security (La fin du vol à l&apos;étalage)</h3>
+          <h2 className="text-lg font-black text-white">SafeGuard EAS</h2>
         </div>
         <p className="mt-3 text-sm leading-7 text-slate-300">
-          PharmaVault surveille vos chiffres, SafeGuard surveille vos rayons. Intégré nativement à PharmaVault,
-          SafeGuard utilise des portiques EAS intelligents reliés à la synchronisation d&apos;inventaire.
+          <span className="font-black text-rose-200">Zéro Vol à l&apos;Étalage.</span> SafeGuard relie la sécurité physique
+          (portiques EAS) au suivi digital des mouvements, pour protéger vos rayons et votre marge.
         </p>
         <p className="mt-3 text-sm leading-7 text-slate-300">
-          Si un produit non-validé en caisse franchit la sortie, une alerte retentit et l&apos;incident est loggé
-          instantanément sur le tableau de bord Admin. Zéro perte, sécurité totale.
+          Si un article non validé franchit la sortie, alerte immédiate et journalisation automatique côté admin.
         </p>
-        <p className="mt-3 text-sm leading-7 text-slate-300">
-          SafeGuard se rembourse rapidement en supprimant les pertes "mystères" qui grignotent votre marge mois après mois.
-        </p>
-        <button
-          type="button"
-          onClick={() => setActiveModal('safeguard')}
-          className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-200 hover:bg-slate-700/40"
-        >
-          Voir la fiche pro
-        </button>
-        <button
-          type="button"
-          onClick={openBizmapSupportChat}
-          className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-900/20"
-        >
-          Me Contacter
-        </button>
-        <Link
-          to="/dashboard/solutions/safeguard"
-          className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-900 hover:bg-emerald-400"
-          title="Voir les détails - SafeGuard Security"
-        >
-          Voir les détails
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </section>
-
-      <section className="rounded-3xl border border-slate-300 bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-2xl shadow-slate-400/20">
-        <div className="flex items-center gap-3">
-          <Wrench className="h-6 w-6 text-amber-300" />
-          <h3 className="text-lg font-black text-white">Développement Sur-Mesure (Votre avantage concurrentiel)</h3>
+        <div className="mt-3 rounded-xl border border-rose-300/30 bg-rose-900/20 p-3">
+          <p className="text-xs font-black uppercase tracking-wider text-rose-100">Hardware-Software Handshake</p>
+          <p className="mt-1 text-xs leading-6 text-slate-300">
+            Si un code-barres n&apos;est pas scanné en caisse, la porte EAS déclenche l&apos;alerte et PharmaVault crée une entrée
+            d&apos;incident horodatée avec identifiant utilisateur pour audit immédiat.
+          </p>
+          <p className="mt-1 text-xs leading-6 text-slate-300">
+            Technologie RF/AM intégrée: chaque alarme devient un point de données exploitable dans le dashboard.
+          </p>
         </div>
-        <p className="mt-3 text-sm leading-7 text-slate-300">
-          Chaque entreprise a ses secrets. BIZMAP crée des solutions logicielles (Web & Mobile) sur mesure
-          qui automatisent vos processus complexes.
-        </p>
-        <p className="mt-3 text-sm leading-7 text-slate-300">
-          Conçues pour les réalités de la Guinée (connectivité, opérations terrain, paiements locaux),
-          nos solutions vous donnent un avantage concurrentiel durable grâce à une Agilité Africaine assumée
-          et des intégrations de paiement sécurisées.
-        </p>
-        <button
-          type="button"
-          onClick={() => setActiveModal('custom')}
-          className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-200 hover:bg-slate-700/40"
-        >
-          Voir la fiche pro
-        </button>
-        <button
-          type="button"
-          onClick={openBizmapSupportChat}
-          className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-900/20"
-        >
-          Me Contacter
-        </button>
-        <Link
-          to="/dashboard/solutions/custom-apps"
-          className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-900 hover:bg-emerald-400"
-          title="Voir les détails - Développement Sur-Mesure"
-        >
-          Voir les détails
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveModal('safeguard')}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:bg-slate-700/40"
+          >
+            Voir la fiche pro
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsContactOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-400 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-900/20"
+          >
+            Demander un Devis
+          </button>
+          <Link
+            to="/dashboard/solutions/safeguard"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-900 hover:bg-emerald-400"
+          >
+            Voir les détails
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
-        <p className="text-sm leading-7 text-slate-700">
-          Le futur de l&apos;Afrique est digital, construisons-le ensemble.
-        </p>
+        <h3 className="text-lg font-black text-slate-900">Le Narratif Legacy Killer</h3>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[540px] text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wider text-slate-500">
+                <th className="pb-3 pr-4 font-black">Service</th>
+                <th className="pb-3 font-black">Valeur Propriétaire</th>
+              </tr>
+            </thead>
+            <tbody className="text-slate-700">
+              <tr className="border-b border-slate-100">
+                <td className="py-3 pr-4 font-semibold">PharmaVault (Standard)</td>
+                <td className="py-3">&quot;Je sais où part mon argent aujourd&apos;hui.&quot;</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="py-3 pr-4 font-semibold">PharmaVault Pro</td>
+                <td className="py-3">&quot;Je possède mes données et mon système me dit quoi faire demain.&quot;</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="py-3 pr-4 font-semibold">Google Maps SEO</td>
+                <td className="py-3">&quot;Ma pharmacie est pleine parce qu&apos;on me trouve sur téléphone.&quot;</td>
+              </tr>
+              <tr>
+                <td className="py-3 pr-4 font-semibold">SafeGuard</td>
+                <td className="py-3">&quot;Je dors tranquille, mes rayons sont électroniquement protégés.&quot;</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {activeModal && (
@@ -284,61 +257,96 @@ export function OtherApps() {
           <div className="w-full max-w-2xl rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-black text-slate-900">
-                {activeModal === 'google'
-                  ? 'Visibilité Google Maps: L’Autoroute du Client'
-                  : activeModal === 'custom'
-                    ? 'Développement Sur-Mesure: Votre avantage concurrentiel'
-                    : 'SafeGuard Security: Protection Physique'}
+                {activeModal === 'terminal'
+                  ? 'Cockpit Caissier - High-Speed Terminal'
+                  : activeModal === 'pro'
+                    ? 'PharmaVault Pro - Premium Upgrade'
+                    : activeModal === 'google'
+                      ? 'SEO & Google Maps - Conakry'
+                      : 'SafeGuard EAS - Sécurité Officine'}
               </h3>
               <button type="button" onClick={() => setActiveModal(null)} className="text-slate-500 hover:text-slate-900">
                 <X className="h-5 w-5" />
               </button>
             </div>
-
-            {activeModal === 'google' && (
-              <div className="space-y-3 text-sm leading-7 text-slate-700">
-                <p><strong>Problème:</strong> 80% des clients à Conakry utilisent Google Maps pour trouver une pharmacie de garde.</p>
-                <p><strong>Solution:</strong> BIZMAP optimise votre référencement local pour vous placer dans le Top 3, avec SEO local, optimisation de fiche, avis et visuels.</p>
-                <p><strong>Impact business:</strong> plus d&apos;appels qualifiés, plus d&apos;itinéraires, et votre Code Marchand OM visible pour réservation/paiement à distance.</p>
+            <div className="space-y-3 text-sm leading-7 text-slate-700">
+              {activeModal === 'terminal' && (
+                <>
+                  <p><strong>Standard 2026:</strong> validation visuelle, calculateur de monnaie et vitesse d&apos;encaissement maximale.</p>
+                  <p><strong>Contexte Guinéen:</strong> optimisé pour les heures de pointe en pharmacie de garde et les paiements Orange Money.</p>
+                </>
+              )}
+              {activeModal === 'pro' && (
+                <>
+                  <p><strong>Souveraineté:</strong> serveur privé local pour continuer à vendre même en cas de coupure internet.</p>
+                  <p><strong>Pilotage:</strong> alertes SMS & IA pour signaler les anomalies de stock et de trésorerie.</p>
+                  <p><strong>Transition:</strong> migration Zero-Effort depuis vos outils legacy.</p>
+                </>
+              )}
+              {activeModal === 'google' && (
+                <>
+                  <p><strong>Objectif:</strong> apparaître en priorité sur Google Maps à Conakry.</p>
+                  <p><strong>Résultat:</strong> trafic local qualifié, appels entrants et nouveaux patients.</p>
+                </>
+              )}
+              {activeModal === 'safeguard' && (
+                <>
+                  <p><strong>Zéro fuite:</strong> lien direct entre sortie magasin et validation digitale.</p>
+                  <p><strong>Contrôle:</strong> incident loggé en temps réel pour audit immédiat.</p>
+                </>
+              )}
+              <div className="pt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveModal(null);
+                    setIsContactOpen(true);
+                  }}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700"
+                >
+                  Demander un Devis
+                </button>
                 <button
                   type="button"
                   onClick={openBizmapSupportChat}
-                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700"
+                  className="rounded-lg border border-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-700 hover:bg-emerald-50"
                 >
-                  Me Contacter
+                  Me Contacter (WhatsApp)
                 </button>
               </div>
-            )}
+            </div>
+          </div>
+        </div>
+      )}
 
-            {activeModal === 'custom' && (
-              <div className="space-y-3 text-sm leading-7 text-slate-700">
-                <p><strong>Approche:</strong> architecture Web & Mobile sur mesure, livrée avec une Agilité Africaine adaptée aux contraintes guinéennes.</p>
-                <p><strong>Cas d’usage:</strong> logistique, immobilier, finance et automatisation de processus internes.</p>
-                <p><strong>Résultat:</strong> réduction des tâches manuelles, accélération des opérations et intégrations de paiement sécurisées.</p>
-                <button
-                  type="button"
-                  onClick={openBizmapSupportChat}
-                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700"
-                >
-                  Me Contacter
-                </button>
-              </div>
-            )}
-
-            {activeModal === 'safeguard' && (
-              <div className="space-y-3 text-sm leading-7 text-slate-700">
-                <p><strong>Pitch:</strong> PharmaVault surveille vos chiffres, SafeGuard surveille vos rayons.</p>
-                <p><strong>Détail:</strong> des portiques EAS intelligents détectent les sorties non autorisées et déclenchent une alerte en temps réel sur le téléphone Admin.</p>
-                <p><strong>Traçabilité:</strong> chaque incident est loggé avec synchronisation d&apos;inventaire pour une réponse rapide et un audit de sécurité fiable.</p>
-                <button
-                  type="button"
-                  onClick={openBizmapSupportChat}
-                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700"
-                >
-                  Me Contacter
-                </button>
-              </div>
-            )}
+      {isContactOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-black text-slate-900">Demande de Devis BIZMAP</h3>
+              <button type="button" onClick={() => setIsContactOpen(false)} className="text-slate-500 hover:text-slate-900">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm leading-7 text-slate-700">
+              Pour un devis rapide (PharmaVault Pro, SEO Google Maps, SafeGuard ou Cockpit Caissier), contactez l&apos;équipe BIZMAP.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openBizmapSupportChat}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700"
+              >
+                Me Contacter sur WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsContactOpen(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100"
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}

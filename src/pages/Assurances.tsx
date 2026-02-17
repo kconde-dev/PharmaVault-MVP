@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Building2, Landmark, Receipt, PieChart, ArrowUpRight, CheckCircle2, Clock } from 'lucide-react';
+import { Building2, Landmark, Receipt, PieChart, ArrowUpRight, CheckCircle2, Clock, CircleHelp, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Transaction } from '@/lib/database.types';
 import { formatSupabaseError } from '@/lib/supabaseError';
@@ -242,6 +242,12 @@ export function Assurances() {
           <div className="flex items-center gap-2 mb-2">
             <div className="h-2 w-8 bg-blue-500 rounded-full" />
             <span className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em]">Tiers-Payant & Prises en Charge</span>
+            <span
+              title="Cette page suit les montants remboursés par assurances, le ticket modérateur patient et les soldes à recouvrer."
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-700"
+            >
+              <CircleHelp className="h-4 w-4" />
+            </span>
           </div>
           <h1 className="text-3xl font-black tracking-tight text-slate-900">
             Suivi des Assurances
@@ -258,6 +264,60 @@ export function Assurances() {
           </div>
         </div>
       </header>
+
+      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+        <h2 className="text-sm font-black uppercase tracking-[0.1em] text-blue-900">Workflow de Calcul Assurance</h2>
+        <p className="mt-2 text-sm font-semibold text-blue-900">
+          Prix Total = Part Patient (Ticket Modérateur) + Part Assurance
+        </p>
+        <p className="mt-2 text-sm leading-7 text-blue-900/90">
+          PharmaVault calcule automatiquement les parts à partir du taux de couverture choisi et conserve la trace du payeur final.
+          Les transactions restent auditables par date, caisse et identifiant utilisateur.
+        </p>
+        <div className="mt-3 rounded-xl border border-blue-300 bg-white p-3">
+          <p className="text-xs font-black uppercase tracking-wider text-blue-800">Validation en 3 étapes</p>
+          <ol className="mt-2 list-decimal pl-4 text-xs leading-6 text-slate-700">
+            <li>Vérifier le taux de couverture (%) selon le contrat assureur.</li>
+            <li>Calculer automatiquement la Part Patient (Ticket Modérateur).</li>
+            <li>Archiver la référence du Bon d&apos;assurance (scan / numéro) pour preuve documentaire.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-slate-700" />
+          <h2 className="text-sm font-black uppercase tracking-[0.1em] text-slate-900">Workflows Supportés & Gestion des Taux</h2>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[620px] text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wider text-slate-500">
+                <th className="pb-3 pr-4 font-black">Régime</th>
+                <th className="pb-3 pr-4 font-black">Exemple Taux Assurance</th>
+                <th className="pb-3 font-black">Règle Opérationnelle</th>
+              </tr>
+            </thead>
+            <tbody className="text-slate-700">
+              <tr className="border-b border-slate-100">
+                <td className="py-3 pr-4 font-semibold">CNAMGS</td>
+                <td className="py-3 pr-4">80% / 90% selon convention</td>
+                <td className="py-3">Calcul automatique du ticket modérateur, suivi des paiements en lot.</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="py-3 pr-4 font-semibold">NSIA</td>
+                <td className="py-3 pr-4">70% / 80% selon contrat</td>
+                <td className="py-3">Validation dossier, créance assurance et marquage “payé” par compagnie.</td>
+              </tr>
+              <tr>
+                <td className="py-3 pr-4 font-semibold">Autres mutuelles</td>
+                <td className="py-3 pr-4">Taux paramétrable en back-office</td>
+                <td className="py-3">Règles adaptables par organisme sans changer le flux caisse.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {error && (
         <div className="p-5 rounded-2xl bg-rose-50 border border-rose-100 flex items-center gap-4 text-rose-600 animate-in fade-in slide-in-from-top-4">

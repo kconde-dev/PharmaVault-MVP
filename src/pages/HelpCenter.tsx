@@ -166,6 +166,28 @@ export function HelpCenter() {
           Assistance
         </a>
       </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-black text-slate-900">Glossaire BIZMAP</h3>
+        <div className="mt-4 space-y-4 text-sm text-slate-700">
+          <div>
+            <p className="font-bold text-slate-900">Écart de Caisse</p>
+            <p>Différence entre la caisse théorique calculée par le système et le comptage physique en fin de garde.</p>
+          </div>
+          <div>
+            <p className="font-bold text-slate-900">Ticket Modérateur</p>
+            <p>Montant payé par le patient dans une transaction assurance, après application du taux de prise en charge.</p>
+          </div>
+          <div>
+            <p className="font-bold text-slate-900">Créance Douteuse</p>
+            <p>Dette client non régularisée depuis plus de 30 jours et classée à risque pour le recouvrement.</p>
+          </div>
+          <div>
+            <p className="font-bold text-slate-900">Séquençage Strict</p>
+            <p>Pour éviter les fuites de capitaux, une seule personne peut être responsable du coffre à la fois. L&apos;administrateur garde le contrôle total pour débloquer le système en cas d&apos;oubli de clôture.</p>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
